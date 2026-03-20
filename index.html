@@ -53,12 +53,12 @@ const MAX_DAYS = 5;
 const LEVELS = {
   1: { minOrders:8,  threeFlowerRate:0.0,  patience:16, spawnGap:[3000,4500],  label:"Opening Day",
        briefMsg:"First day on the job! Time to prove yourself! Complete 8 orders." },
-  2: { minOrders:6,  threeFlowerRate:0.30, patience:16, spawnGap:[2500,4000],  label:"Finding Your Feet",
+  2: { minOrders:6,  threeFlowerRate:0.30, patience:16, spawnGap:[2500,4000],  label:"Gettin the Hang of It",
        briefMsg:"Damn, that shit was kinda stressful. Just complete 6 orders this round." },
-  3: { minOrders:6,  threeFlowerRate:0.50, patience:16, spawnGap:[2000,3500],  label:"Getting Busy",
+  3: { minOrders:6,  threeFlowerRate:0.50, patience:16, spawnGap:[2000,3500],  label:"Tough Day",
        briefMsg:"Working is exhausting. You might be more drawn to True Crime, but RESIST!" },
   4: { minOrders:7,  threeFlowerRate:0.65, patience:16, spawnGap:[1800,3000],  label:"Peak Season",
-       briefMsg:"The shop is picking up. Your friends want bigger bouquets. Btw, your friend will be sick today." },
+       briefMsg:"The shop is picking up & customers want bigger bouquets? BTW, your friend is sick today, so make sure to avoid them." },
   5: { minOrders:7,  threeFlowerRate:0.75, patience:18, spawnGap:[2000,3500],  label:"Full Bloom",
        briefMsg:"Final Day. You've been good at finding balance. You got this!!" },
 };
@@ -86,10 +86,10 @@ const FLOWERS = {
 const FKEYS = Object.keys(FLOWERS);
 
 const FRIEND_MSGS_NORMAL = [
-  "You're doing so great. 💛",
-  "You're trying your best.",
+  "LOVE U SABANNAH 💛",
+  "Damn you killin it",
   "Did you eat today or rest?",
-  "Don't forget to take care of yourself.",
+  "Such a great lil worker",
   "Drink some water. 💧",
   "Maybe take a little nap? It might help 😴",
 ];
@@ -98,7 +98,7 @@ const FRIEND_MSGS_LOW_ENERGY = [
   "You should really rest. The bed is right there! 🛏️",
   "Please nap — you're running low on energy 💤",
   "I'm serious, go sleep. You need it! 😴",
-  "The bed is calling your name. Listen to it! 🛏️",
+  "Your energy is low, go eat something!",
 ];
 
 const FRIEND_MSGS_OVERCHAT = [
@@ -111,16 +111,18 @@ const FRIEND_MSGS_OVERCHAT = [
 
 // Spread loot across floor using a grid to avoid clumping
 const GRID_COLS = 6, GRID_ROWS = 4;
-function randSafeFloor(margin=36, existingItems=[]) {
+function randSafeFloor(margin=36, existingItems=[], playerPos=null, minGrids=2.5) {
   // Build list of grid cells and pick one that's least occupied
   const cellW = (FLOOR.w - margin*2) / GRID_COLS;
   const cellH = (FLOOR.h - margin*2) / GRID_ROWS;
+  const minPlayerDist = Math.min(cellW, cellH) * minGrids;
   const cells = [];
   for(let r=0;r<GRID_ROWS;r++){
     for(let c=0;c<GRID_COLS;c++){
       const cx = FLOOR.x + margin + c*cellW + cellW/2 + (Math.random()-0.5)*cellW*0.5;
       const cy = FLOOR.y + margin + r*cellH + cellH/2 + (Math.random()-0.5)*cellH*0.5;
-      if(NO_SPAWN_ZONES.every(z=>cx<z.x||cx>z.x+z.w||cy<z.y||cy>z.y+z.h)){
+      const tooClose = playerPos && Math.sqrt((cx-playerPos.x)**2+(cy-playerPos.y)**2)<minPlayerDist;
+      if(!tooClose && NO_SPAWN_ZONES.every(z=>cx<z.x||cx>z.x+z.w||cy<z.y||cy>z.y+z.h)){
         // Count how many existing items are near this cell
         const nearby = existingItems.filter(f=>Math.sqrt((f.x-cx)**2+(f.y-cy)**2)<80).length;
         cells.push({x:cx,y:cy,nearby});
@@ -231,23 +233,67 @@ function DrawnBed({ w, h, sleeping, near, napProgress }) {
 }
 
 // ── FRIEND ─────────────────────────────────────────────────────────────────────
-function FriendFig({ x, y, facing, walking, walkFrame }) {
+const FRIEND_PHOTOS_BY_DAY = [
+  "photos/ellen.png",   // Day 1
+  "photos/michael.png", // Day 2
+  "photos/nathan.jpeg", // Day 3
+  "photos/erica.png",   // Day 4 (sick)
+  "photos/elise.png",   // Day 5
+];
+// Customer type key to exclude (they're the friend that day)
+const FRIEND_TYPE_BY_DAY = ["ellen","michael","nathan","erica","elise"];
+const ALL_FRIEND_PHOTOS = ["photos/ellen.png","photos/michael.png","photos/nathan.jpeg","photos/erica.png","photos/elise.png"];
+
+function CyclingFriendIcon() {
+  const [idx,setIdx] = useState(0);
+  useEffect(()=>{const t=setInterval(()=>setIdx(i=>(i+1)%ALL_FRIEND_PHOTOS.length),500);return()=>clearInterval(t);},[]);
+  return <img src={ALL_FRIEND_PHOTOS[idx]} style={{width:18,height:18,borderRadius:"50%",objectFit:"cover",display:"block"}}/>;
+}
+
+function FriendFig({ x, y, facing, walking, walkFrame, photoSrc, isSick }) {
   const phi=walking?walkFrame*0.40:0,cyc=Math.sin(phi);
   const leg=cyc*6,arm=cyc*4,bob=walking?Math.abs(cyc)*1.5:0;
+  const clipId=`friend-head-${x|0}`;
+  const isNathan = photoSrc && photoSrc.includes("nathan");
+
+  // Nathan: show full photo instead of head-on-stick
+  if(isNathan) {
+    return (
+      <g transform={`translate(${x},${y})`}>
+        <g transform={`translate(0,${-bob})`}>
+          {isSick&&<ellipse cx="12" cy="24" rx="22" ry="28" fill="rgba(239,68,68,0.18)" style={{filter:"blur(6px)"}}/>}
+          <defs><clipPath id={`${clipId}-full`}><rect x="-6" y="-2" width="36" height="46" rx="5"/></clipPath></defs>
+          <image href={photoSrc} x="-6" y="-2" width="36" height="46" clipPath={`url(#${clipId}-full)`} preserveAspectRatio="xMidYMin meet"/>
+        </g>
+      </g>
+    );
+  }
+
+  // Others: stick figure with bigger photo head
   return (
     <g transform={`translate(${x},${y})`}>
       <g transform={facing==="left"?"scale(-1,1) translate(-24,0)":""}>
         <g transform={`translate(0,${-bob})`}>
-          <line x1="12" y1="19" x2="12" y2="30" stroke="#c084fc" strokeWidth="3" strokeLinecap="round"/>
-          <line x1="12" y1="23" x2={7+arm} y2="28" stroke="#c084fc" strokeWidth="2" strokeLinecap="round"/>
-          <line x1="12" y1="23" x2={17-arm} y2="28" stroke="#c084fc" strokeWidth="2" strokeLinecap="round"/>
-          <line x1="10" y1="30" x2={9-leg} y2={walking?37-Math.abs(cyc)*2:38} stroke="#c084fc" strokeWidth="2.2" strokeLinecap="round"/>
-          <line x1="14" y1="30" x2={15+leg} y2={walking?37-Math.abs(cyc)*2:38} stroke="#c084fc" strokeWidth="2.2" strokeLinecap="round"/>
-          <circle cx="12" cy="10" r="8" fill="#fde68a"/>
-          <ellipse cx="12" cy="4" rx="8" ry="5" fill="#c084fc" opacity="0.8"/>
-          <circle cx="9" cy="10" r="1.3" fill="#374151"/>
-          <circle cx="15" cy="10" r="1.3" fill="#374151"/>
-          <path d="M9 14 Q12 17 15 14" stroke="#374151" strokeWidth="1" fill="none" strokeLinecap="round"/>
+          {isSick&&<ellipse cx="12" cy="24" rx="20" ry="26" fill="rgba(239,68,68,0.18)" style={{filter:"blur(6px)"}}/>}
+          <line x1="12" y1="25" x2="12" y2="38" stroke="#c084fc" strokeWidth="3" strokeLinecap="round"/>
+          <line x1="12" y1="29" x2={7+arm} y2="34" stroke="#c084fc" strokeWidth="2" strokeLinecap="round"/>
+          <line x1="12" y1="29" x2={17-arm} y2="34" stroke="#c084fc" strokeWidth="2" strokeLinecap="round"/>
+          <line x1="10" y1="38" x2={9-leg} y2={walking?45-Math.abs(cyc)*2:46} stroke="#c084fc" strokeWidth="2.2" strokeLinecap="round"/>
+          <line x1="14" y1="38" x2={15+leg} y2={walking?45-Math.abs(cyc)*2:46} stroke="#c084fc" strokeWidth="2.2" strokeLinecap="round"/>
+          {photoSrc?(
+            <>
+              <defs><clipPath id={clipId}><circle cx="12" cy="10" r="13"/></clipPath></defs>
+              <image href={photoSrc} x="-1" y="-3" width="26" height="26" clipPath={`url(#${clipId})`} preserveAspectRatio="xMidYMid slice"/>
+            </>
+          ):(
+            <>
+              <circle cx="12" cy="10" r="8" fill="#fde68a"/>
+              <ellipse cx="12" cy="4" rx="8" ry="5" fill="#c084fc" opacity="0.8"/>
+              <circle cx="9" cy="10" r="1.3" fill="#374151"/>
+              <circle cx="15" cy="10" r="1.3" fill="#374151"/>
+              <path d="M9 14 Q12 17 15 14" stroke="#374151" strokeWidth="1" fill="none" strokeLinecap="round"/>
+            </>
+          )}
         </g>
       </g>
     </g>
@@ -415,9 +461,9 @@ const CUSTOMERS = {
 };
 const CUSTOMER_KEYS = Object.keys(CUSTOMERS);
 
-function pickCustomerType() {
+function pickCustomerType(excludeType=null) {
   // weighted pool — elise is rare, nathan/ellen come up often
-  const pool = ["elise","nathan","ellen","ellen","erica","erica","michael","michael","nathan"];
+  const pool = ["elise","nathan","ellen","ellen","erica","erica","michael","michael","nathan"].filter(t=>t!==excludeType);
   return pool[Math.floor(Math.random()*pool.length)];
 }
 
@@ -438,14 +484,14 @@ const ACTIVITY_POOL = [
   "a date", "mom", "a birthday present", "romance", "my friend", "themselves", "an important work thing",
 ];
 
-function makeCustomer(id, qIdx, threeFlowerRate=0) {
+function makeCustomer(id, qIdx, threeFlowerRate=0, excludeType=null) {
   const roll = Math.random();
   let n;
   if(roll < threeFlowerRate * 0.25) n = 4;
   else if(roll < threeFlowerRate) n = 3;
   else n = 2;
   const colors=[...FKEYS].sort(()=>Math.random()-0.5).slice(0,n);
-  const type = pickCustomerType();
+  const type = pickCustomerType(excludeType);
   const cfg = CUSTOMERS[type];
   const rawActivity = ACTIVITY_POOL[Math.floor(Math.random()*ACTIVITY_POOL.length)];
   const activity = getActivity(rawActivity, cfg.gender);
@@ -542,6 +588,7 @@ function BloomGame() {
   const friendPosRef=useRef({x:380,y:240});
   const friendTargRef=useRef({x:380,y:240});
   const friendWFRef=useRef(0);
+  const friendContactCooldownRef=useRef(0);
   const speedModRef=useRef(1);
   const walkFrameRef=useRef(0);
   const customerIdRef=useRef(0);
@@ -644,8 +691,7 @@ function BloomGame() {
 
   // Journal rescue item — only if entering day while wilting (state 2) on days 3+
   const scheduleJournal=useCallback(()=>{
-    const ws=getWbState(wellbeingRef.current);
-    if(day<3||ws<2||ws>3)return; // only in wilting (2) or meh (3)
+    if(day<3||pointsRef.current>=LOW_ENERGY_THRESHOLD)return; // only on days 3+ with <5 energy
     const delay=Math.random()*15000; // random within first 15s
     journalTimerRef.current=setTimeout(()=>{
       // Fixed lower-right area of the floor
@@ -658,7 +704,7 @@ function BloomGame() {
 
   const scheduleTrueCrime=useCallback(()=>{
     clearTimeout(trueCrimeTimerRef.current);
-    const p=randSafeFloor(50);
+    const p=randSafeFloor(50,[],posRef.current,1.0);
     const item={id:Date.now(),type:"truecrime",emoji:"🕵🏻‍♀️🔍",x:p.x,y:p.y,born:Date.now(),lifetime:TRUE_CRIME_DURATION};
     trueCrimeRef.current=item;setTrueCrimeItem(item);
     trueCrimeTimerRef.current=setTimeout(()=>{
@@ -671,7 +717,7 @@ function BloomGame() {
 
   const scheduleTrueCrime2=useCallback(()=>{
     clearTimeout(trueCrimeTimerRef2.current);
-    const p=randSafeFloor(50);
+    const p=randSafeFloor(50,[],posRef.current,1.0);
     const item={id:Date.now()+1,type:"truecrime",emoji:"🕵🏻‍♀️🔍",x:p.x,y:p.y,born:Date.now(),lifetime:TRUE_CRIME_DURATION};
     trueCrimeRef2.current=item;setTrueCrimeItem2(item);
     trueCrimeTimerRef2.current=setTimeout(()=>{
@@ -688,7 +734,7 @@ function BloomGame() {
     const color=needed[Math.floor(Math.random()*needed.length)];
     lootIdRef.current++;
     const existing=[...lootRef.current];
-    const p=randSafeFloor(36,existing);
+    const p=randSafeFloor(36,existing,posRef.current);
     setLootItems(prev=>[...prev,{id:lootIdRef.current,type:"flower",color,emoji:FLOWERS[color].emoji,x:p.x,y:p.y,vx:(Math.random()-0.5)*0.8,vy:(Math.random()-0.5)*0.8,born:Date.now(),lifetime:3200+Math.random()*800}]);
   },[]);
 
@@ -709,7 +755,7 @@ function BloomGame() {
     const fp=randFloor(80);friendPosRef.current=fp;friendTargRef.current=fp;
 
     customerIdRef.current=1;
-    const fc=makeCustomer(1,0,lvlCfg.threeFlowerRate);
+    const fc=makeCustomer(1,0,lvlCfg.threeFlowerRate,FRIEND_TYPE_BY_DAY[Math.min(day,5)-1]);
     fc.x=QUEUE_START.x; fc.y=QUEUE_START.y; fc.state="queued";
     fc.patience=fc.customerType==="elise"?9999:lvlCfg.patience;
 
@@ -793,7 +839,7 @@ function BloomGame() {
 
       const fp=friendPosRef.current,ft=friendTargRef.current;
       const fdx=ft.x-fp.x,fdy=ft.y-fp.y,fdist=Math.sqrt(fdx*fdx+fdy*fdy);
-      if(fdist>4){const nfp={x:fp.x+(fdx/fdist)*FRIEND_SPEED,y:fp.y+(fdy/fdist)*FRIEND_SPEED};friendPosRef.current=nfp;setFriendPos({...nfp});setFriendFacing(fdx>=0?"right":"left");setFriendWalking(true);friendWFRef.current++;setFriendWalkFrame(friendWFRef.current);}
+      if(fdist>4){const fspd=day===4?FRIEND_SPEED*0.75:FRIEND_SPEED;const nfp={x:fp.x+(fdx/fdist)*fspd,y:fp.y+(fdy/fdist)*fspd};friendPosRef.current=nfp;setFriendPos({...nfp});setFriendFacing(fdx>=0?"right":"left");setFriendWalking(true);friendWFRef.current++;setFriendWalkFrame(friendWFRef.current);}
       else{setFriendWalking(false);if(tick%180===0)friendTargRef.current=randFloor(60);}
 
       const hasWaiting=customersRef.current.some(c=>c.state==="queued"||c.state==="impatient");
@@ -826,7 +872,7 @@ function BloomGame() {
           trueCrimeRef2.current=null;setTrueCrimeItem2(null);
         }
       }
-      if(!found){const fp2=friendPosRef.current;if(Math.sqrt((cx-fp2.x)**2+(cy-fp2.y)**2)<42)found="friend";}
+      if(!found){const fp2=friendPosRef.current;const fdist2=Math.sqrt((cx-fp2.x)**2+(cy-fp2.y)**2);if(fdist2<42){found="friend";if(day===4&&Date.now()>friendContactCooldownRef.current){friendContactCooldownRef.current=Date.now()+2000;pointsRef.current=Math.max(0,pointsRef.current-1);setPoints(pointsRef.current);showDelta(-1);showFriendBubble("I'm sick! Please avoid me.",true);}}}
       if(!found&&cx>BED.x-30&&cx<BED.x+BED.w+30&&cy>BED.y-30&&cy<BED.y+BED.h+30)found="bed";
       setNearObj(found);
     },16);
@@ -851,7 +897,7 @@ function BloomGame() {
           customerIdRef.current++;
           const id=customerIdRef.current;
           const qIdx=customersRef.current.filter(c=>c.state==="queued"||c.state==="impatient").length;
-          const c=makeCustomer(id,qIdx,lvlCfg.threeFlowerRate);
+          const c=makeCustomer(id,qIdx,lvlCfg.threeFlowerRate,FRIEND_TYPE_BY_DAY[Math.min(day,5)-1]);
           c.patience=c.customerType==="elise"?9999:lvlCfg.patience;
           setCustomers(prev=>[...prev,c]);
         }
@@ -1052,7 +1098,7 @@ function BloomGame() {
     }
     if(obj==="truecrime"){return;}
     if(obj==="friend"){
-      if(day===4)return; // friend is sick on Day 4
+      if(day===4){showFriendBubble("I'm sick! Please avoid me.",true);return;}
       const isLowEnergy=pointsRef.current<LOW_ENERGY_THRESHOLD;
       const overLimit=friendChats>=4;
       if(overLimit){
@@ -1068,12 +1114,12 @@ function BloomGame() {
       setSelfToday(s=>s+1);setFriendChats(n=>n+1);indulgeRef.current++;
       let msg;
       if(isLowEnergy){msg=FRIEND_MSGS_LOW_ENERGY[Math.floor(Math.random()*FRIEND_MSGS_LOW_ENERGY.length)];}
-      else{const idx=(friendMsgIdx+1)%FRIEND_MSGS_NORMAL.length;setFriendMsgIdx(idx);msg=FRIEND_MSGS_NORMAL[idx];}
+      else{msg=FRIEND_MSGS_NORMAL[Math.floor(Math.random()*FRIEND_MSGS_NORMAL.length)];}
       showFriendBubble(msg,false);
       speedModRef.current=Math.min(1.6,speedModRef.current+0.22);setSpeedMod(speedModRef.current);
       friendTargRef.current=randFloor(60);return;
     }
-  },[nearObj,friendMsgIdx,startNap,showFriendBubble,startOrderTimer,showOutOfEnergy,showDelta,day,orderGoalMet]);
+  },[nearObj,startNap,showFriendBubble,startOrderTimer,showOutOfEnergy,showDelta,day,orderGoalMet]);
 
   handleSpaceRef.current=handleSpace;
 
@@ -1122,15 +1168,7 @@ function BloomGame() {
             ].map(([icon,desc])=>(
               <div key={desc} style={{display:"flex",alignItems:"center",gap:5,fontSize:10,color:"#374151",padding:"2px 0"}}>
                 <span style={{fontSize:13,minWidth:18,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  {icon===null?(
-                    <svg width="18" height="18" viewBox="0 0 24 24">
-                      <ellipse cx="12" cy="4" rx="8" ry="5" fill="#c084fc" opacity="0.85"/>
-                      <circle cx="12" cy="11" r="7" fill="#fde68a"/>
-                      <circle cx="9.5" cy="11" r="1.2" fill="#374151"/>
-                      <circle cx="14.5" cy="11" r="1.2" fill="#374151"/>
-                      <path d="M9.5 14.5 Q12 17 14.5 14.5" stroke="#374151" strokeWidth="1" fill="none" strokeLinecap="round"/>
-                    </svg>
-                  ):icon}
+                  {icon===null?(<CyclingFriendIcon/>):icon}
                 </span>
                 <span>{desc}</span>
               </div>
@@ -1153,7 +1191,7 @@ function BloomGame() {
     const moodAtStart=WB[wState];
     const isReturning=dayHistory.length>0;
     const energyNote=startEnergy<TOTAL_POINTS
-      ? `You're starting with ${startEnergy.toFixed(1)} energy — rest helped, but you're not fully recovered.`
+      ? `You're starting with ${startEnergy.toFixed(1)} energy.`
       : null;
     return(
       <div style={{...sharedStyle,background:bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",overflow:"hidden",position:"relative"}}>
@@ -1171,7 +1209,7 @@ function BloomGame() {
           {/* Mood entering with */}
           <div style={{display:"inline-flex",alignItems:"center",gap:8,background:moodAtStart.moodBg,borderRadius:20,padding:"6px 16px",border:`1.5px solid ${moodAtStart.moodColor}44`,marginBottom:16,marginTop:8}}>
             <Char state={wState} facing="right" walking={false} walkFrame={0} size={24}/>
-            <span style={{fontSize:13,fontWeight:"bold",color:moodAtStart.moodColor}}>{moodAtStart.moodEmoji} {moodAtStart.name==="fine"?"starting the day in a fine mood cause you didn't listen to the marias":`Starting as ${moodAtStart.name}`}</span>
+            <span style={{fontSize:13,fontWeight:"bold",color:moodAtStart.moodColor}}>{moodAtStart.moodEmoji} {moodAtStart.name==="fine"?"starting the day in a fine mood cause you didn't listen to the marias":`${moodAtStart.name==="WEEEE"?"Starting as WEE cause bitch u doing a good job":`Starting as ${moodAtStart.name}${moodAtStart.name==="meh"?" cause you're over it":""}`}`}</span>
           </div>
 
           {/* Custom day message — the key narrative prompt */}
@@ -1311,7 +1349,7 @@ function BloomGame() {
                 ))}
               </div>
               {lowEnergyPenalty&&<div style={{background:"#fef2f2",border:"2px solid #ef4444",borderRadius:8,padding:"6px 10px",fontSize:10,color:"#dc2626",fontWeight:"bold",animation:"pop 0.4s 0.1s both",display:"flex",alignItems:"center",gap:5,boxShadow:"0 2px 6px rgba(239,68,68,0.18)"}}>
-                <span style={{fontSize:14}}>⚡</span><span>Low energy — mood drops a level tomorrow</span>
+                <span style={{fontSize:14}}>⚡</span><span>Someone forgot to take care of themself.... your mood will drop tomorrow</span>
               </div>}
               {!lowEnergyPenalty&&(()=>{const ratio=givingToday>0?selfToday/givingToday:0;return ratio<0.3&&ordersToday>0;})()&&<div style={{background:"#fff7ed",border:"1.5px solid #fed7aa",borderRadius:7,padding:"4px 8px",fontSize:9,color:"#c2410c",animation:"pop 0.4s 0.12s both"}}>🌿 Not enough self-care — mood will drop a level</div>}
               {lastH?.moodImproved&&(
@@ -1631,13 +1669,13 @@ function BloomGame() {
       {journalItem&&<LootItem item={journalItem} isNear={nearObj==="journal"}/>}
 
       <svg style={{position:"absolute",inset:0,pointerEvents:"none",zIndex:7}} width={W} height={H}>
-        {day!==4&&<FriendFig x={friendPos.x} y={friendPos.y} facing={friendFacing} walking={friendWalking} walkFrame={friendWalkFrame}/>}
-        {day!==4&&nearObj==="friend"&&!friendBubble&&(
+        <FriendFig x={friendPos.x} y={friendPos.y} facing={friendFacing} walking={friendWalking} walkFrame={friendWalkFrame} photoSrc={FRIEND_PHOTOS_BY_DAY[Math.min(day,5)-1]} isSick={day===4}/>
+        {nearObj==="friend"&&!friendBubble&&(
           <g transform={`translate(${friendPos.x+26},${friendPos.y-28})`}>
-            <rect x="0" y="0" width="108" height="20" rx="6" fill="white" stroke="#c084fc" strokeWidth="1.5"/>
-            <polygon points="0,7 -7,12 0,17" fill="white" stroke="#c084fc" strokeWidth="1.5" strokeLinejoin="round"/>
-            <text x="7" y="14" fontSize="8" fill="#7e22ce" fontFamily="Georgia,serif">
-              {friendChats>=4?"SPACE (−½⚡ over limit)":"SPACE (+½ energy, free)"}
+            <rect x="0" y="0" width="108" height="20" rx="6" fill="white" stroke={day===4?"#ef4444":"#c084fc"} strokeWidth="1.5"/>
+            <polygon points="0,7 -7,12 0,17" fill="white" stroke={day===4?"#ef4444":"#c084fc"} strokeWidth="1.5" strokeLinejoin="round"/>
+            <text x="7" y="14" fontSize="8" fill={day===4?"#b91c1c":"#7e22ce"} fontFamily="Georgia,serif">
+              {day===4?"SPACE (sick! −1⚡)":friendChats>=4?"SPACE (−½⚡ over limit)":"SPACE (+½ energy, free)"}
             </text>
           </g>
         )}
@@ -1656,7 +1694,6 @@ function BloomGame() {
           <div style={{position:"absolute",bottom:-10,left:20,width:0,height:0,borderLeft:"8px solid transparent",borderRight:"8px solid transparent",borderTop:`10px solid ${friendBubble.overchat?"#f59e0b":isLowEnergy?"#3b82f6":"#c084fc"}`}}/>
           <div style={{position:"absolute",bottom:-8,left:21,width:0,height:0,borderLeft:"7px solid transparent",borderRight:"7px solid transparent",borderTop:"9px solid white"}}/>
           <div style={{fontSize:11,color:friendBubble.overchat?"#92400e":isLowEnergy?"#1d4ed8":"#4c1d95",lineHeight:1.6,fontStyle:"italic"}}>"{friendBubble.msg}"</div>
-          <div style={{fontSize:8,color:friendBubble.overchat?"#f59e0b":isLowEnergy?"#3b82f6":"#c084fc",marginTop:3,textAlign:"right"}}>— your friend 🫶</div>
         </div>
       )}
 
@@ -1793,8 +1830,8 @@ function BloomGame() {
     </div>
   );
 }
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<BloomGame />);
+
+ReactDOM.createRoot(document.getElementById("root")).render(<BloomGame/>);
 </script>
 </body>
 </html>
