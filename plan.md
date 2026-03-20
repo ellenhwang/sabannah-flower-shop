@@ -450,7 +450,9 @@ Right column --- Stats:
 -   Rendering: CSS absolute positioning + inline SVG for characters and
     NPCs
 
--   Game loop: setInterval at 16ms (\~60fps)
+-   Game loop: setInterval at 16ms (\~60fps). Added error handling
+    (try/catch) in game loop to prevent crashes from infinite loops or
+    memory leaks.
 
 -   Input: keydown/keyup (arrow keys, spacebar, ESC)
 

@@ -751,7 +751,7 @@ function BloomGame() {
     posRef.current={x:430,y:260};pointsRef.current=initEnergy;
     bouquetRef.current=[];currentRef.current=null;
     walkFrameRef.current=0;speedModRef.current=1;indulgeRef.current=0;
-    sleepingRef.current=false;snackRef.current=null;waterRef.current=null;trueCrimeRef.current=null;trueCrimeRef2.current=null;journalRef.current=null;skipToLossRef.current=false;
+    sleepingRef.current=false;snackRef.current=null;waterRef.current=null;trueCrimeRef.current=null;trueCrimeRef2.current=null;journalRef.current=null;skipToLossRef.current=false;friendContactCooldownRef.current=0;
     const fp=randFloor(80);friendPosRef.current=fp;friendTargRef.current=fp;
 
     customerIdRef.current=1;
@@ -802,6 +802,7 @@ function BloomGame() {
     if(screen!=="game")return;
     let tick=0;
     gameLoopRef.current=setInterval(()=>{
+      try{
       if(pausedRef.current)return;
       tick++;
       if(sleepingRef.current||isEatingRef.current||isDrinkingRef.current)return;
@@ -875,6 +876,7 @@ function BloomGame() {
       if(!found){const fp2=friendPosRef.current;const fdist2=Math.sqrt((cx-fp2.x)**2+(cy-fp2.y)**2);if(fdist2<42){found="friend";if(day===4&&Date.now()>friendContactCooldownRef.current){friendContactCooldownRef.current=Date.now()+2000;pointsRef.current=Math.max(0,pointsRef.current-1);setPoints(pointsRef.current);showDelta(-1);showFriendBubble("I'm sick! Please avoid me.",true);}}}
       if(!found&&cx>BED.x-30&&cx<BED.x+BED.w+30&&cy>BED.y-30&&cy<BED.y+BED.h+30)found="bed";
       setNearObj(found);
+      }catch(err){console.error("Game loop error:",err);}
     },16);
     return()=>clearInterval(gameLoopRef.current);
   },[screen,day,showDelta]);
@@ -1482,7 +1484,7 @@ function BloomGame() {
         @keyframes quote-right{0%{opacity:0;transform:translateX(18px)}100%{opacity:1;transform:translateX(0)}}
       `}</style>
       {/* Celebration scene */}
-      <div style={{display:"flex",alignItems:"flex-end",justifyContent:"center",gap:14,marginBottom:0}}>
+      <div style={{display:"flex",alignItems:"flex-end",justifyContent:"center",gap:14,marginBottom:16}}>
         <CelebCust name="elise"  photoSrc={CUST_PHOTOS.elise}  bodyColor="#fda4af" armPose="up"    wrapAnim="win-jump"  delay="0s"    dur="0.5s"  size={62}/>
         {/* Nathan — full image, no circle crop */}
         <div style={{animation:"win-pop 0.6s 0.1s both",marginBottom:4}}>
@@ -1495,7 +1497,7 @@ function BloomGame() {
         <CelebCust name="michael" photoSrc={CUST_PHOTOS.michael} bodyColor="#fcd34d" armPose="up"   wrapAnim="win-sway"  delay="0.14s" dur="0.52s" size={62}/>
       </div>
       {/* Sav avatar — centered, right above title */}
-      <div style={{animation:"bi 1s cubic-bezier(0.34,1.56,0.64,1) forwards",marginBottom:-90,overflow:"visible",marginTop:20}}>
+      <div style={{animation:"bi 1s cubic-bezier(0.34,1.56,0.64,1) forwards",marginBottom:-100,overflow:"visible",marginTop:50}}>
         <Char state={5} facing="right" walking={false} walkFrame={0} size={80}/>
       </div>
       <h1 style={{fontSize:36,color:"#9d174d",margin:"0 0 6px",letterSpacing:-1,position:"relative",zIndex:10}}>Sabannah's thriving. 🌸</h1>
