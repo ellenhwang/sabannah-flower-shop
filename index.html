@@ -1,0 +1,1800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Sabannah's Flower Shop</title>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>*{box-sizing:border-box;margin:0;padding:0;}body{background:#fdf2f8;display:flex;justify-content:center;align-items:center;min-height:100vh;font-family:Georgia,serif;}</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+const W = 900, H = 620;
+const CHAR_W = 30, CHAR_H = 40;
+const BASE_SPEED = 5.2;
+const FRIEND_SPEED = 5.5;
+const TOTAL_POINTS = 10;           // 10 circles
+const NAP_DURATION = 5000;
+const NAP_ENERGY = 3;              // +3 circles
+const FRIEND_ENERGY_GAIN = 0.5;    // +0.5
+const SNACK_ENERGY = 2;            // +2
+const WATER_ENERGY = 1;            // +1
+const JOURNAL_ENERGY = 5;          // +5 (wilting rescue item)
+const JOURNAL_VISIBLE_MS = 7000;   // 7 seconds on floor
+const EAT_DRINK_PAUSE = 2000;
+const LOW_ENERGY_THRESHOLD = 5;
+const ACCEPT_COST = 0.5;           // −0.5
+const COLLECT_COST = 1/3;          // −⅓ per flower
+const DELIVER_COST = 1/3;          // −⅓ on delivery
+const FAIL_PENALTY = 0.5;          // −0.5 on timer expiry
+const TRUE_CRIME_COST = 3;         // −3
+const FRIEND_OVERCHAT_COST = 0.5;  // −0.5 over chat limit
+const ORDER_TIMEOUT = 10;
+const MIN_ENERGY_EOD = 5;
+const TRUE_CRIME_DURATION = 4000;
+const TRUE_CRIME_GAP_MIN  = 2000;
+const TRUE_CRIME_GAP_MAX  = 5000;
+const LOOT_VISIBLE_MS = 1500;
+const LOOT_GAP_SNACK = 5000;
+const LOOT_GAP_WATER = 1500;
+const LOOT_GAP_SNACK_D1 = 8000;
+const LOOT_GAP_WATER_D1 = 4000;
+const LOOT_GAP_SNACK_D5 = 2000;
+const LOOT_GAP_WATER_D5 = 600;
+const SLOW_MOOD_THRESHOLD = 3;
+const MAX_DAYS = 5;
+
+// ── LEVEL CONFIG ──────────────────────────────────────────────────────────────
+const LEVELS = {
+  1: { minOrders:8,  threeFlowerRate:0.0,  patience:16, spawnGap:[3000,4500],  label:"Opening Day",
+       briefMsg:"First day on the job! Time to prove yourself! Complete 8 orders." },
+  2: { minOrders:6,  threeFlowerRate:0.30, patience:16, spawnGap:[2500,4000],  label:"Finding Your Feet",
+       briefMsg:"Damn, that shit was kinda stressful. Just complete 6 orders this round." },
+  3: { minOrders:6,  threeFlowerRate:0.50, patience:16, spawnGap:[2000,3500],  label:"Getting Busy",
+       briefMsg:"Working is exhausting. You might be more drawn to True Crime, but RESIST!" },
+  4: { minOrders:7,  threeFlowerRate:0.65, patience:16, spawnGap:[1800,3000],  label:"Peak Season",
+       briefMsg:"The shop is picking up. Your friends want bigger bouquets. Btw, your friend will be sick today." },
+  5: { minOrders:7,  threeFlowerRate:0.75, patience:18, spawnGap:[2000,3500],  label:"Full Bloom",
+       briefMsg:"Final Day. You've been good at finding balance. You got this!!" },
+};
+
+const FLOOR   = { x:110, y:100, w:680, h:380 };
+const COUNTER = { x:FLOOR.x+240, y:FLOOR.y+12, w:180, h:58 };
+const QUEUE_START = { x:COUNTER.x+COUNTER.w+12, y:COUNTER.y+6 };
+const QUEUE_STEP  = 74;
+const BED = { x:FLOOR.x+12, y:FLOOR.y+FLOOR.h-72, w:76, h:64 };
+const ENTER_X = W+40, ENTER_Y = 42;
+const EXIT_X = -70,   EXIT_Y  = 42;
+
+const NO_SPAWN_ZONES = [
+  { x:COUNTER.x-70, y:COUNTER.y-70, w:COUNTER.w+440, h:COUNTER.h+130 },
+  { x:BED.x-30,     y:BED.y-30,     w:BED.w+60,      h:BED.h+60 },
+];
+
+const FLOWERS = {
+  rose:      { hex:"#f87171", label:"Rose",      emoji:"🌹" },
+  lavender:  { hex:"#a78bfa", label:"Lavender",  emoji:"💜" },
+  sunflower: { hex:"#fbbf24", label:"Sunflower", emoji:"🌻" },
+  sage:      { hex:"#4ade80", label:"Sage",       emoji:"🌿" },
+  peony:     { hex:"#f472b6", label:"Peony",      emoji:"🌸" },
+};
+const FKEYS = Object.keys(FLOWERS);
+
+const FRIEND_MSGS_NORMAL = [
+  "You're doing so great. 💛",
+  "You're trying your best.",
+  "Did you eat today or rest?",
+  "Don't forget to take care of yourself.",
+  "Drink some water. 💧",
+  "Maybe take a little nap? It might help 😴",
+];
+const FRIEND_MSGS_LOW_ENERGY = [
+  "Hey... you look tired. Go take a nap! 😴",
+  "You should really rest. The bed is right there! 🛏️",
+  "Please nap — you're running low on energy 💤",
+  "I'm serious, go sleep. You need it! 😴",
+  "The bed is calling your name. Listen to it! 🛏️",
+];
+
+const FRIEND_MSGS_OVERCHAT = [
+  "I can't talk to you all day... take care of yourself! 🌿",
+  "You need more than just me — eat something! 🍓",
+  "Go drink some water, seriously. 💧",
+  "I love you but please take a nap! 🛏️",
+  "You're leaning on me too much. Rest! 😅",
+];
+
+// Spread loot across floor using a grid to avoid clumping
+const GRID_COLS = 6, GRID_ROWS = 4;
+function randSafeFloor(margin=36, existingItems=[]) {
+  // Build list of grid cells and pick one that's least occupied
+  const cellW = (FLOOR.w - margin*2) / GRID_COLS;
+  const cellH = (FLOOR.h - margin*2) / GRID_ROWS;
+  const cells = [];
+  for(let r=0;r<GRID_ROWS;r++){
+    for(let c=0;c<GRID_COLS;c++){
+      const cx = FLOOR.x + margin + c*cellW + cellW/2 + (Math.random()-0.5)*cellW*0.5;
+      const cy = FLOOR.y + margin + r*cellH + cellH/2 + (Math.random()-0.5)*cellH*0.5;
+      if(NO_SPAWN_ZONES.every(z=>cx<z.x||cx>z.x+z.w||cy<z.y||cy>z.y+z.h)){
+        // Count how many existing items are near this cell
+        const nearby = existingItems.filter(f=>Math.sqrt((f.x-cx)**2+(f.y-cy)**2)<80).length;
+        cells.push({x:cx,y:cy,nearby});
+      }
+    }
+  }
+  if(cells.length===0) return {x:FLOOR.x+280+Math.random()*80,y:FLOOR.y+140+Math.random()*60};
+  // Sort by least occupied and pick from the least-clumped third
+  cells.sort((a,b)=>a.nearby-b.nearby);
+  const pool = cells.slice(0, Math.max(1, Math.ceil(cells.length/3)));
+  return pool[Math.floor(Math.random()*pool.length)];
+}
+function randFloor(margin=60) {
+  return {x:FLOOR.x+margin+Math.random()*(FLOOR.w-margin*2),y:FLOOR.y+margin+Math.random()*(FLOOR.h-margin*2)};
+}
+function getWbState(wb) {
+  if(wb>=80)return 5; if(wb>=60)return 4; if(wb>=40)return 3; if(wb>=20)return 2; return 1;
+}
+function effectiveSpeed(pts, wbState, speedMod) {
+  const ef = 0.35 + Math.max(0,pts/TOTAL_POINTS)*0.65;
+  let spd = BASE_SPEED * WB[wbState].spd * speedMod * ef;
+  if(wbState<=SLOW_MOOD_THRESHOLD && pts<LOW_ENERGY_THRESHOLD) spd *= 0.65;
+  return spd;
+}
+// Order reward based on flower count
+function orderReward(colorCount) {
+  if(colorCount>=4) return 0.50;
+  if(colorCount>=3) return 0.35;
+  return 0.25;
+}
+// Carry-over energy — always persists to next day
+function carryOverEnergy(endPts) {
+  return endPts;
+}
+
+const WB = {
+  5:{ name:"WEEEE",        bc:"#fda4af", ec:"#881337", spd:1.0,  filter:"saturate(1.4)", moodColor:"#be185d", moodBg:"#fdf2f8", moodEmoji:"🌸", wbColor:"#f472b6" },
+  4:{ name:"fine",         bc:"#86efac", ec:"#14532d", spd:0.9,  filter:"saturate(1.1)", moodColor:"#15803d", moodBg:"#f0fdf4", moodEmoji:"😊", wbColor:"#4ade80" },
+  3:{ name:"meh",          bc:"#fcd34d", ec:"#78350f", spd:0.75, filter:"saturate(0.85)",moodColor:"#a16207", moodBg:"#fffbeb", moodEmoji:"😐", wbColor:"#fbbf24" },
+  2:{ name:"wilting",      bc:"#cbd5e1", ec:"#334155", spd:0.55, filter:"saturate(0.4) brightness(0.9)", moodColor:"#475569", moodBg:"#f1f5f9", moodEmoji:"😔", wbColor:"#94a3b8" },
+  1:{ name:"acid reflux",  bc:"#a8a29e", ec:"#292524", spd:0.35, filter:"saturate(0.1) brightness(0.8)", moodColor:"#57534e", moodBg:"#f5f5f4", moodEmoji:"🥀", wbColor:"#78716c" },
+};
+
+// ── CHARACTER ─────────────────────────────────────────────────────────────────
+function Char({ state, facing, walking, walkFrame=0, size=36, sleeping=false }) {
+  const c=WB[state], stem=state>=3?"#4ade80":"#9ca3af";
+  const phi=walking?walkFrame*0.40:0,cyc=Math.sin(phi);
+  const leg=cyc*8,arm=cyc*5,bob=walking?Math.abs(cyc)*2:0;
+  return (
+    <svg width={size} height={size*1.4} viewBox="0 0 36 52" style={{filter:c.filter,overflow:"visible",display:"block"}}>
+      <g transform={sleeping?"translate(0,14) rotate(-90,18,26)":(facing==="left"?"scale(-1,1) translate(-36,0)":"")}>
+        <g transform={`translate(0,${-bob})`}>
+          <line x1="18" y1="28" x2="18" y2="43" stroke={stem} strokeWidth="3.5" strokeLinecap="round"/>
+          <line x1="18" y1="32" x2={11+arm} y2="39" stroke={stem} strokeWidth="2.4" strokeLinecap="round"/>
+          <line x1="18" y1="32" x2={25-arm} y2="39" stroke={stem} strokeWidth="2.4" strokeLinecap="round"/>
+          <line x1="15" y1="43" x2={sleeping?15:13-leg} y2={sleeping?50:walking?48-Math.abs(cyc)*4:50} stroke={stem} strokeWidth="2.8" strokeLinecap="round"/>
+          <line x1="21" y1="43" x2={sleeping?21:23+leg} y2={sleeping?50:walking?48-Math.abs(cyc)*4:50} stroke={stem} strokeWidth="2.8" strokeLinecap="round"/>
+          <g transform={`translate(18,${12+(state<=2?7:0)}) rotate(${sleeping?0:state<=2?10:0},0,0)`}>
+            {state===5&&[0,45,90,135,180,225,270,315].map((a,i)=>(
+              <ellipse key={i} cx={Math.cos(a*Math.PI/180)*11} cy={Math.sin(a*Math.PI/180)*11} rx="6" ry="3.5" fill={c.bc} opacity={0.92} transform={`rotate(${a},${Math.cos(a*Math.PI/180)*11},${Math.sin(a*Math.PI/180)*11})`}/>
+            ))}
+            {state<=2?(
+              <>
+                <defs><clipPath id="sav-wilt-clip"><circle cx="0" cy="0" r="16"/></clipPath></defs>
+                <image href="photos/sav_wilting.png" x="-16" y="-16" width="32" height="32" clipPath="url(#sav-wilt-clip)" preserveAspectRatio="xMidYMid slice"/>
+              </>
+            ):state===3?(
+              <>
+                <defs><clipPath id="sav-meh-clip"><circle cx="0" cy="0" r="16"/></clipPath></defs>
+                <image href="photos/sav_meh.png" x="-16" y="-16" width="32" height="32" clipPath="url(#sav-meh-clip)" preserveAspectRatio="xMidYMid slice"/>
+              </>
+            ):state===4?(
+              <>
+                <defs><clipPath id="sav-fine-clip"><circle cx="0" cy="0" r="16"/></clipPath></defs>
+                <image href="photos/sav_fine.png" x="-16" y="-16" width="32" height="32" clipPath="url(#sav-fine-clip)" preserveAspectRatio="xMidYMid slice"/>
+              </>
+            ):(
+              <>
+                <defs><clipPath id="sav-wee-clip"><circle cx="0" cy="0" r="16"/></clipPath></defs>
+                <image href="photos/sav_wee.png" x="-16" y="-16" width="32" height="32" clipPath="url(#sav-wee-clip)" preserveAspectRatio="xMidYMid slice"/>
+              </>
+            )}
+          </g>
+        </g>
+      </g>
+    </svg>
+  );
+}
+
+// ── DRAWN BED (smaller, squarer) ──────────────────────────────────────────────
+function DrawnBed({ w, h, sleeping, near, napProgress }) {
+  const fc="#c4956a",bc=sleeping?"#a5d8ff":"#ffd6c8",hc=sleeping?"#74c0fc":"#ffa8a8";
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{display:"block",filter:near||sleeping?"drop-shadow(0 0 5px rgba(96,165,250,0.5))":"drop-shadow(0 2px 3px rgba(0,0,0,0.12))"}}>
+      <rect x="2" y="2" width={w-4} height={h-4} rx="7" fill={fc}/>
+      <rect x="6" y="12" width={w-12} height={h-18} rx="4" fill="#f8e8d4"/>
+      <rect x="2" y="2" width={w-4} height="12" rx="5" fill={fc}/>
+      <rect x="6" y="4" width={w-12} height="8" rx="3" fill="#d4a574"/>
+      <rect x="2" y={h-10} width={w-4} height="8" rx="3" fill={fc}/>
+      <rect x="7" y="17" width={w-14} height={h-28} rx="3" fill={bc}/>
+      <rect x="7" y="17" width={w-14} height="7" rx="3" fill={hc} opacity="0.7"/>
+      <rect x="8" y="13" width={Math.floor((w-20)/2)} height="10" rx="3" fill="#fff0e8" stroke="rgba(0,0,0,0.07)" strokeWidth="0.5"/>
+      <rect x={8+Math.floor((w-20)/2)+3} y="13" width={Math.floor((w-20)/2)} height="10" rx="3" fill="#fff0e8" stroke="rgba(0,0,0,0.07)" strokeWidth="0.5"/>
+      {sleeping&&<><text x={w-16} y="11" fontSize="7" fill="#60a5fa" opacity="0.9">z</text><text x={w-10} y="7" fontSize="6" fill="#93c5fd" opacity="0.7">z</text></>}
+      {sleeping&&napProgress>0&&<><rect x="7" y={h-6} width={w-14} height="3" rx="1.5" fill="rgba(147,197,253,0.3)"/><rect x="7" y={h-6} width={(w-14)*(napProgress/100)} height="3" rx="1.5" fill="#3b82f6"/></>}
+    </svg>
+  );
+}
+
+// ── FRIEND ─────────────────────────────────────────────────────────────────────
+function FriendFig({ x, y, facing, walking, walkFrame }) {
+  const phi=walking?walkFrame*0.40:0,cyc=Math.sin(phi);
+  const leg=cyc*6,arm=cyc*4,bob=walking?Math.abs(cyc)*1.5:0;
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <g transform={facing==="left"?"scale(-1,1) translate(-24,0)":""}>
+        <g transform={`translate(0,${-bob})`}>
+          <line x1="12" y1="19" x2="12" y2="30" stroke="#c084fc" strokeWidth="3" strokeLinecap="round"/>
+          <line x1="12" y1="23" x2={7+arm} y2="28" stroke="#c084fc" strokeWidth="2" strokeLinecap="round"/>
+          <line x1="12" y1="23" x2={17-arm} y2="28" stroke="#c084fc" strokeWidth="2" strokeLinecap="round"/>
+          <line x1="10" y1="30" x2={9-leg} y2={walking?37-Math.abs(cyc)*2:38} stroke="#c084fc" strokeWidth="2.2" strokeLinecap="round"/>
+          <line x1="14" y1="30" x2={15+leg} y2={walking?37-Math.abs(cyc)*2:38} stroke="#c084fc" strokeWidth="2.2" strokeLinecap="round"/>
+          <circle cx="12" cy="10" r="8" fill="#fde68a"/>
+          <ellipse cx="12" cy="4" rx="8" ry="5" fill="#c084fc" opacity="0.8"/>
+          <circle cx="9" cy="10" r="1.3" fill="#374151"/>
+          <circle cx="15" cy="10" r="1.3" fill="#374151"/>
+          <path d="M9 14 Q12 17 15 14" stroke="#374151" strokeWidth="1" fill="none" strokeLinecap="round"/>
+        </g>
+      </g>
+    </g>
+  );
+}
+
+// ── CELEBRATING CUSTOMER (win screen) ─────────────────────────────────────────
+function CelebCust({ name, photoSrc, bodyColor, armPose, wrapAnim, delay, dur, size=44 }) {
+  const clipId=`cc-${name}`;
+  const h=size*68/44;
+  const arms={
+    up:       {lx:8,  ly:16, rx:28, ry:16},
+    out:      {lx:4,  ly:28, rx:32, ry:28},
+    clap:     {lx:14, ly:33, rx:22, ry:33},
+    dance:    {lx:5,  ly:20, rx:30, ry:30},
+  }[armPose]||{lx:8,ly:16,rx:28,ry:16};
+  return (
+    <div style={{animation:`win-pop 0.6s ${delay} both`}}>
+      <div style={{animation:`${wrapAnim} ${dur} ${delay} ease-in-out infinite`,transformOrigin:"50% 100%",display:"inline-block"}}>
+        <svg width={size} height={h} viewBox="0 0 36 60" style={{overflow:"visible",display:"block"}}>
+          <defs><clipPath id={clipId}><circle cx="18" cy="10" r="11"/></clipPath></defs>
+          <image href={photoSrc} x="7" y="-1" width="22" height="22" clipPath={`url(#${clipId})`} preserveAspectRatio="xMidYMid slice"/>
+          <line x1="18" y1="21" x2="18" y2="40" stroke={bodyColor} strokeWidth="3.5" strokeLinecap="round"/>
+          <line x1="18" y1="27" x2={arms.lx} y2={arms.ly} stroke={bodyColor} strokeWidth="2.5" strokeLinecap="round"/>
+          <line x1="18" y1="27" x2={arms.rx} y2={arms.ry} stroke={bodyColor} strokeWidth="2.5" strokeLinecap="round"/>
+          <line x1="18" y1="40" x2="11" y2="55" stroke={bodyColor} strokeWidth="2.5" strokeLinecap="round"/>
+          <line x1="18" y1="40" x2="25" y2="55" stroke={bodyColor} strokeWidth="2.5" strokeLinecap="round"/>
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+// ── CUSTOMER WALKING ──────────────────────────────────────────────────────────
+function CustomerWalking({ c }) {
+  const bc=c.customerColor||["#fdba74","#a5f3fc","#fca5a5","#c4b5fd","#86efac","#fde68a","#bfdbfe"][c.id%7];
+  const happy=c.state==="leaving_happy";
+
+  const custPhoto = CUST_PHOTOS[c.customerType];
+  return (
+    <g transform={`translate(${c.x},${c.y})`}>
+      {custPhoto?(
+        <>
+          <image href={custPhoto} x="-4" y="-8" width="34" height="56" preserveAspectRatio="xMidYMid meet"/>
+          {happy&&c.bouquet&&(<g transform="translate(22,20)"><line x1="0" y1="0" x2="0" y2="12" stroke="#4ade80" strokeWidth="2" strokeLinecap="round"/>{c.bouquet.slice(0,3).map((col,i)=>(<circle key={col} cx={-4+i*4} cy={-2} r="4" fill={FLOWERS[col].hex} stroke="white" strokeWidth="1"/>))}</g>)}
+        </>
+      ):(
+        <>
+          <ellipse cx="13" cy="44" rx="9" ry="2.5" fill="rgba(0,0,0,0.07)"/>
+          <rect x="6" y="22" width="14" height="16" rx="4" fill={bc}/>
+          <circle cx="13" cy="13" r="10" fill="#fef3c7"/>
+          <ellipse cx="13" cy="6" rx="10" ry="6" fill={bc} opacity="0.75"/>
+          <circle cx="10" cy="12" r="1.5" fill="#374151"/>
+          <circle cx="16" cy="12" r="1.5" fill="#374151"/>
+          {happy?<path d="M10 17 Q13 21 16 17" stroke="#374151" strokeWidth="1.3" fill="none" strokeLinecap="round"/>:<line x1="10" y1="17" x2="16" y2="17" stroke="#374151" strokeWidth="1.1" strokeLinecap="round"/>}
+          {happy&&<><circle cx="8" cy="15" r="2.5" fill="#fda4af" opacity="0.5"/><circle cx="18" cy="15" r="2.5" fill="#fda4af" opacity="0.5"/></>}
+          <line x1="9" y1="37" x2="7" y2="45" stroke={bc} strokeWidth="2.5" strokeLinecap="round"/>
+          <line x1="17" y1="37" x2="19" y2="45" stroke={bc} strokeWidth="2.5" strokeLinecap="round"/>
+          {happy&&c.bouquet&&(<g transform="translate(18,24)"><line x1="0" y1="0" x2="0" y2="12" stroke="#4ade80" strokeWidth="2" strokeLinecap="round"/>{c.bouquet.slice(0,3).map((col,i)=>(<circle key={col} cx={-4+i*4} cy={-2} r="4" fill={FLOWERS[col].hex} stroke="white" strokeWidth="1"/>))}</g>)}
+        </>
+      )}
+      {/* Name tag */}
+      {c.customerName&&<text x="13" y="56" fontSize="7" textAnchor="middle" fill="#374151" fontFamily="Georgia,serif" fontWeight="bold">{c.customerName}</text>}
+    </g>
+  );
+}
+
+const CUST_PHOTOS = {
+  nathan:"photos/nathan.jpeg", ellen:"photos/ellen.png",
+  elise:"photos/elise.png",   erica:"photos/erica.png", michael:"photos/michael.png",
+};
+
+function CustFig({ id, state, customerColor, customerName, isAtCounter, customerType }) {
+  const bc = customerColor || ["#fdba74","#a5f3fc","#fca5a5","#c4b5fd","#86efac","#fde68a","#bfdbfe"][id%7];
+  const shakeAnim = state==="impatient" ? {animation:"cust-shake 0.45s ease-in-out infinite"} : {};
+  const photo = CUST_PHOTOS[customerType];
+  if(photo){
+    return(
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:1,...shakeAnim}}>
+        <div style={{width:30,height:48,overflow:"hidden",borderRadius:4,filter:isAtCounter?"drop-shadow(0 0 5px rgba(74,222,128,0.8))":"none"}}>
+          <img src={photo} style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"top center"}} alt={customerName}/>
+        </div>
+        <div style={{fontSize:8,fontWeight:"bold",color:"#374151",whiteSpace:"nowrap",background:"rgba(255,255,255,0.85)",borderRadius:4,padding:"1px 4px",border:`1px solid ${bc}`}}>{customerName||"?"}</div>
+      </div>
+    );
+  }
+  return (
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:1,...shakeAnim}}>
+      <svg width="30" height="48" viewBox="0 0 26 44" style={{overflow:"visible",display:"block",filter:isAtCounter?"drop-shadow(0 0 5px rgba(74,222,128,0.8))":"none"}}>
+        <ellipse cx="13" cy="42" rx="8" ry="2.5" fill="rgba(0,0,0,0.07)"/>
+        <rect x="6" y="22" width="14" height="16" rx="4" fill={bc}/>
+        <circle cx="13" cy="14" r="9" fill="#fef3c7"/>
+        <ellipse cx="13" cy="7" rx="9" ry="5.5" fill={bc} opacity="0.75"/>
+        <circle cx="10" cy="13" r="1.4" fill="#374151"/>
+        <circle cx="16" cy="13" r="1.4" fill="#374151"/>
+        {state==="impatient"
+          ?<line x1="10" y1="18" x2="16" y2="18" stroke="#374151" strokeWidth="1.1" strokeLinecap="round"/>
+          :<path d="M10 18 Q13 21 16 18" stroke="#374151" strokeWidth="1.1" fill="none" strokeLinecap="round"/>}
+        <line x1="9" y1="36" x2="7" y2="44" stroke={bc} strokeWidth="2.5" strokeLinecap="round"/>
+        <line x1="17" y1="36" x2="19" y2="44" stroke={bc} strokeWidth="2.5" strokeLinecap="round"/>
+      </svg>
+      <div style={{fontSize:8,fontWeight:"bold",color:"#374151",whiteSpace:"nowrap",background:"rgba(255,255,255,0.85)",borderRadius:4,padding:"1px 4px",border:`1px solid ${bc}`}}>{customerName||"?"}</div>
+    </div>
+  );
+}
+
+function LootItem({ item, isNear }) {
+  const age=(Date.now()-item.born)/item.lifetime;
+  const op=age>0.72?Math.max(0,1-(age-0.72)/0.28):1;
+  const isSC=item.type==="snack"||item.type==="water";
+  const isTC=item.type==="truecrime";
+  const isJournal=item.type==="journal";
+  const gc=isSC?"rgba(52,211,153,0.95)":isTC?"rgba(239,68,68,0.95)":isJournal?"rgba(234,179,8,0.95)":"rgba(244,114,182,0.85)";
+  const bgDisc=isSC
+    ?"radial-gradient(circle,rgba(52,211,153,0.55) 0%,rgba(52,211,153,0.15) 55%,transparent 75%)"
+    :isTC
+    ?"radial-gradient(circle,rgba(239,68,68,0.45) 0%,rgba(239,68,68,0.12) 55%,transparent 75%)"
+    :isJournal
+    ?"radial-gradient(circle,rgba(234,179,8,0.65) 0%,rgba(234,179,8,0.25) 55%,transparent 75%)"
+    :null;
+  const label=item.type==="snack"?"+2⚡":item.type==="water"?"+1⚡":item.type==="journal"?"+5⚡":null;
+  const containerSize=isJournal?112:isSC?56:44;
+  const offset=containerSize/2;
+  const discAnim=isTC?"truecrime-pulse 0.9s ease-in-out infinite":isJournal?"journal-pulse 0.75s ease-in-out infinite":"selfcare-glow 1.2s ease-in-out infinite";
+  const emojiSize=isJournal?44:isSC?22:isTC?17:21;
+  const emojiFilter=isNear
+    ?`drop-shadow(0 0 12px ${gc}) drop-shadow(0 0 5px white)`
+    :isJournal
+    ?`drop-shadow(0 0 8px rgba(234,179,8,0.9)) drop-shadow(0 2px 3px rgba(0,0,0,0.2))`
+    :`drop-shadow(0 2px 3px rgba(0,0,0,0.18))${isSC?" drop-shadow(0 0 5px rgba(52,211,153,0.6))":""}`;
+  return (
+    <div style={{position:"absolute",left:item.x-offset,top:item.y-offset,width:containerSize,height:containerSize,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",pointerEvents:"none",zIndex:6,opacity:op}}>
+      {bgDisc&&<div style={{position:"absolute",inset:0,borderRadius:"50%",background:bgDisc,animation:discAnim}}/>}
+      <div style={{fontSize:emojiSize,filter:emojiFilter,animation:"loot-bob 1.1s ease-in-out infinite",lineHeight:1.1,position:"relative",zIndex:1}}>{item.emoji}</div>
+      {label&&<div style={{fontSize:isJournal?11:8,color:isJournal?"#92400e":"#065f46",fontWeight:"bold",marginTop:1,lineHeight:1,position:"relative",zIndex:1}}>{label}</div>}
+      {isJournal&&<div style={{fontSize:9,color:"#92400e",fontWeight:"bold",marginTop:2,lineHeight:1,position:"relative",zIndex:1,letterSpacing:0.5,textTransform:"uppercase"}}>journal</div>}
+      {isTC&&<div style={{fontSize:7,color:"#ef4444",fontWeight:"bold",marginTop:1,whiteSpace:"nowrap",lineHeight:1,position:"relative",zIndex:1}}>true crime break</div>}
+      {isNear&&<div style={{position:"absolute",bottom:-22,left:"50%",transform:"translateX(-50%)",background:isTC?"#7f1d1d":isJournal?"#78350f":"#1e1b4b",color:"white",borderRadius:5,padding:"1px 7px",fontSize:8,whiteSpace:"nowrap",fontFamily:"monospace"}}>{isTC?"SPACE (-3⚡)":"SPACE"}</div>}
+    </div>
+  );
+}
+
+// ── CUSTOMER PERSONALITIES ────────────────────────────────────────────────────
+const CUSTOMERS = {
+  elise:   { name:"Elise",   gender:"f", color:"#fda4af", patience:999,
+    happyMsgs:["these are the most beautiful flowers i've seen","you're doing great sav","GO GO GO GO","🥹🥹🥹🥹","SO PRETTY","wow flowers! wow you!"],
+    sadMsgs:["plz take care of yourself sav","this is probably cause you didn't eat","rest up","I'm not mad But you better not have been listening to true crime"],
+  },
+  nathan:  { name:"Nathan",  gender:"m", color:"#93c5fd", patience:0.4,
+    happyMsgs:["Thank you for doing everything exactly as I expected in the exact way I wanted","It's giving… you're just better than everyone???","I see the mental health is working with us today"],
+    sadMsgs:["Stupid big boobed bitch!","Oh so are you like crashing out rn or","No that's fine never mind"],
+  },
+  ellen:   { name:"Ellen",   gender:"f", color:"#c4b5fd", patience:0.75,
+    happyMsgs:["sav is so guai","beautiful bouquet im gonna bite it","A+ job wow","KILLING IT","Flower so good I wanna give Sav a big hug"],
+    sadMsgs:["aw man no flowers 4 me","they die anyways","wahhhhh :(","*spits on sav*","*activates menace*"],
+  },
+  erica:   { name:"Erica",   gender:"f", color:"#86efac", patience:0.75,
+    happyMsgs:["WOWWWWW","so cool","my date is gonna love these"],
+    sadMsgs:["blehhhhh","aw man no flowers","sad i can't give these to my date"],
+  },
+  michael: { name:"Michael", gender:"m", color:"#fcd34d", patience:0.75,
+    happyMsgs:["That was easy","Yeah yeah yeah yeah yeah yeah yeah yeah yeah yeah","Smoothie time"],
+    sadMsgs:["Maybe later","Do you need help?","This is why your mom said you couldn't be a florist when you were little"],
+  },
+};
+const CUSTOMER_KEYS = Object.keys(CUSTOMERS);
+
+function pickCustomerType() {
+  // weighted pool — elise is rare, nathan/ellen come up often
+  const pool = ["elise","nathan","ellen","ellen","erica","erica","michael","michael","nathan"];
+  return pool[Math.floor(Math.random()*pool.length)];
+}
+
+const FLOWER_ACTIVITIES = [
+  "a first date", "my mom", "a birthday present", "romance", "my friend",
+  // "themselves" is replaced dynamically using customer gender
+];
+
+// Returns activity string, substituting pronouns for gendered tokens
+function getActivity(baseActivity, gender) {
+  if(baseActivity==="themselves") return gender==="m"?"himself":"herself";
+  if(baseActivity==="mom") return gender==="m"?"his mom":"her mom";
+  return baseActivity;
+}
+
+// Pool — "themselves" and "mom" are pronoun tokens resolved via getActivity
+const ACTIVITY_POOL = [
+  "a date", "mom", "a birthday present", "romance", "my friend", "themselves", "an important work thing",
+];
+
+function makeCustomer(id, qIdx, threeFlowerRate=0) {
+  const roll = Math.random();
+  let n;
+  if(roll < threeFlowerRate * 0.25) n = 4;
+  else if(roll < threeFlowerRate) n = 3;
+  else n = 2;
+  const colors=[...FKEYS].sort(()=>Math.random()-0.5).slice(0,n);
+  const type = pickCustomerType();
+  const cfg = CUSTOMERS[type];
+  const rawActivity = ACTIVITY_POOL[Math.floor(Math.random()*ACTIVITY_POOL.length)];
+  const activity = getActivity(rawActivity, cfg.gender);
+  return {
+    id, colors, order:{id,colors},
+    x:ENTER_X, y:ENTER_Y,
+    tx:QUEUE_START.x+qIdx*QUEUE_STEP, ty:QUEUE_START.y,
+    state:"approaching", patience:0,
+    bouquet:null,
+    customerType: type,
+    customerName: cfg.name,
+    customerColor: cfg.color,
+    activity,
+  };
+}
+
+// ── MAIN ──────────────────────────────────────────────────────────────────────
+function BloomGame() {
+  const [screen,setScreen]       = useState("intro");
+  const [day,setDay]             = useState(1);
+  const [wellbeing,setWb]        = useState(70);
+  const [streak,setStreak]       = useState(0);
+  const [best,setBest]           = useState(0);
+  const [dayHistory,setDayHistory] = useState([]);
+  const [startEnergy,setStartEnergy] = useState(TOTAL_POINTS); // carry-over
+  const [retryUsed,setRetryUsed]     = useState(false); // one retry per failed orders
+  const [paused,setPaused]           = useState(false);
+  const [showSettings,setShowSettings] = useState(false);
+
+  const [pos,setPos]             = useState({x:430,y:260});
+  const [facing,setFacing]       = useState("right");
+  const [walking,setWalking]     = useState(false);
+  const [walkFrame,setWalkFrame] = useState(0);
+  const [speedMod,setSpeedMod]   = useState(1);
+  const [points,setPoints]       = useState(TOTAL_POINTS);
+  const [timeLeft,setTimeLeft]   = useState(120);
+  const [sleeping,setSleeping]   = useState(false);
+  const [napProgress,setNapProgress] = useState(0);
+  const [outOfEnergy,setOutOfEnergy] = useState(false);
+  const [isEating,setIsEating]       = useState(false);  // 3s snack pause
+  const [isDrinking,setIsDrinking]   = useState(false);  // 3s water pause
+  const eatDrinkTimerRef             = useRef(null);
+  const [energyDeltas,setEnergyDeltas] = useState([]);
+  const deltaIdRef                   = useRef(0);
+
+  const [customers,setCustomers]         = useState([]);
+  const [bouquet,setBouquet]             = useState([]);
+  const [currentOrder,setCurrentOrder]   = useState(null);
+  const [orderTimer,setOrderTimer]       = useState(null);
+  const [ordersToday,setOrdersToday]     = useState(0);
+  const [lostOrders,setLostOrders]       = useState(0);
+  const [orderGoalMet,setOrderGoalMet]   = useState(false);
+  const [customerFeedback,setCustomerFeedback] = useState([]); // [{name,color,msg,happy}] // triggers celebration
+  const [selfToday,setSelfToday]         = useState(0);
+  const [givingToday,setGivingToday]     = useState(0);
+  const [friendChats,setFriendChats]     = useState(0);
+  const [snacksEaten,setSnacksEaten]     = useState(0);
+  const [watersToday,setWatersToday]     = useState(0);
+  const [napsToday,setNapsToday]         = useState(0);
+  const [counterStatus,setCounterStatus] = useState("idle");
+  // How many customers are inbound (approaching or queued, not yet leaving)
+  const [customerCount,setCustomerCount] = useState(0);
+
+  const [lootItems,setLootItems]       = useState([]);
+  const [snackItem,setSnackItem]       = useState(null);
+  const [waterItem,setWaterItem]       = useState(null);
+  const [trueCrimeItem,setTrueCrimeItem] = useState(null);
+  const [trueCrimeItem2,setTrueCrimeItem2] = useState(null);
+  const [journalItem,setJournalItem] = useState(null);
+
+  const [friendPos,setFriendPos]           = useState({x:380,y:240});
+  const [friendFacing,setFriendFacing]     = useState("right");
+  const [friendWalking,setFriendWalking]   = useState(false);
+  const [friendWalkFrame,setFriendWalkFrame] = useState(0);
+  const [friendMsgIdx,setFriendMsgIdx]     = useState(0);
+  const [friendBubble,setFriendBubble]     = useState(null);
+  const friendBubbleTimerRef               = useRef(null);
+  const feedbackIndicesRef                 = useRef({}); // { [type_happy|type_sad]: index }
+  const [nearObj,setNearObj]               = useState(null);
+  const [isNewRecord,setIsNewRecord]       = useState(false);
+
+  // Refs
+  const keysRef=useRef({});
+  const posRef=useRef({x:430,y:260});
+  const pointsRef=useRef(TOTAL_POINTS);
+  const bouquetRef=useRef([]);
+  const currentRef=useRef(null);
+  const customersRef=useRef([]);
+  const lootRef=useRef([]);
+  const snackRef=useRef(null);
+  const waterRef=useRef(null);
+  const trueCrimeRef=useRef(null);
+  const trueCrimeRef2=useRef(null);
+  const friendPosRef=useRef({x:380,y:240});
+  const friendTargRef=useRef({x:380,y:240});
+  const friendWFRef=useRef(0);
+  const speedModRef=useRef(1);
+  const walkFrameRef=useRef(0);
+  const customerIdRef=useRef(0);
+  const lootIdRef=useRef(0);
+  const indulgeRef=useRef(0);
+  const sleepingRef=useRef(false);
+  const isEatingRef=useRef(false);
+  const isDrinkingRef=useRef(false);
+  const pausedRef=useRef(false);
+  const orderTimerRef=useRef(null);
+  const napTimerRef=useRef(null);
+  const napIntervalRef=useRef(null);
+  const gameLoopRef=useRef(null);
+  const timerRef=useRef(null);
+  const spawnRef=useRef(null);
+  const lootSpawnRef=useRef(null);
+  const snackTimerRef=useRef(null);
+  const waterTimerRef=useRef(null);
+  const trueCrimeTimerRef=useRef(null);
+  const trueCrimeTimerRef2=useRef(null);
+  const journalRef=useRef(null);
+  const journalTimerRef=useRef(null);
+  const handleSpaceRef=useRef(null);
+  const outOfEnergyTimerRef=useRef(null);
+  const skipToLossRef=useRef(false);
+  const wellbeingRef=useRef(70);
+  wellbeingRef.current=wellbeing;
+  pausedRef.current=paused;
+
+  const wState=getWbState(wellbeing);
+  const lvl=LEVELS[Math.min(day,MAX_DAYS)];
+  bouquetRef.current=bouquet;
+  currentRef.current=currentOrder;
+  customersRef.current=customers;
+  lootRef.current=lootItems;
+  snackRef.current=snackItem;
+  waterRef.current=waterItem;
+  trueCrimeRef.current=trueCrimeItem;
+  speedModRef.current=speedMod;
+  sleepingRef.current=sleeping;
+  isEatingRef.current=isEating;
+  isDrinkingRef.current=isDrinking;
+
+  const showOutOfEnergy=useCallback(()=>{
+    setOutOfEnergy(true);
+    clearTimeout(outOfEnergyTimerRef.current);
+    outOfEnergyTimerRef.current=setTimeout(()=>setOutOfEnergy(false),3000);
+  },[]);
+
+  const showDelta=useCallback((value)=>{
+    const id=++deltaIdRef.current;
+    setEnergyDeltas(prev=>[...prev,{id,value}]);
+    setTimeout(()=>setEnergyDeltas(prev=>prev.filter(d=>d.id!==id)),1200);
+  },[]);
+
+  const cancelOrder=useCallback(()=>{
+    clearInterval(orderTimerRef.current);setOrderTimer(null);
+    const cust=customersRef.current.find(c=>c.state==="accepted");
+    if(cust){
+      const cfg=CUSTOMERS[cust.customerType]||CUSTOMERS.erica;
+      const sadKey=`${cust.customerType}_sad`;
+      const sadIdx=(feedbackIndicesRef.current[sadKey]||0)%cfg.sadMsgs.length;
+      feedbackIndicesRef.current[sadKey]=(sadIdx+1);
+      const msg=cfg.sadMsgs[sadIdx];
+      setCustomers(prev=>prev.map(c=>c.id===cust.id?{...c,state:"leaving",feedback:msg}:c));
+      setCustomerFeedback(prev=>[...prev,{name:cust.customerName,color:cust.customerColor,type:cust.customerType,msg,happy:false}]);
+    }
+    currentRef.current=null;setCurrentOrder(null);
+    setBouquet([]);bouquetRef.current=[];setLootItems([]);setCounterStatus("idle");
+    pointsRef.current=Math.max(0,pointsRef.current-FAIL_PENALTY);
+    setPoints(pointsRef.current);
+    showDelta(-FAIL_PENALTY);
+    setLostOrders(n=>n+1);
+  },[]);
+
+  const startOrderTimer=useCallback(()=>{
+    clearInterval(orderTimerRef.current);setOrderTimer(ORDER_TIMEOUT);
+    orderTimerRef.current=setInterval(()=>{setOrderTimer(t=>{if(t<=1){cancelOrder();return null;}return t-1;});},1000);
+  },[cancelOrder]);
+
+  const scheduleSnack=useCallback(()=>{
+    clearTimeout(snackTimerRef.current);
+    const existing=[...lootRef.current];
+    const p=randSafeFloor(50,existing);
+    const item={id:Date.now(),type:"snack",emoji:"🥚",x:p.x,y:p.y,born:Date.now(),lifetime:LOOT_VISIBLE_MS};
+    snackRef.current=item;setSnackItem(item);
+    const gap=day===1?LOOT_GAP_SNACK_D1:day===5?LOOT_GAP_SNACK_D5:LOOT_GAP_SNACK;
+    snackTimerRef.current=setTimeout(()=>{snackRef.current=null;setSnackItem(null);snackTimerRef.current=setTimeout(scheduleSnack,gap);},LOOT_VISIBLE_MS);
+  },[day]);
+
+  const scheduleWater=useCallback(()=>{
+    clearTimeout(waterTimerRef.current);
+    const existing=[...lootRef.current];
+    const p=randSafeFloor(50,existing);
+    const item={id:Date.now(),type:"water",emoji:"💧",x:p.x,y:p.y,born:Date.now(),lifetime:LOOT_VISIBLE_MS};
+    waterRef.current=item;setWaterItem(item);
+    const gap=day===1?LOOT_GAP_WATER_D1:day===5?LOOT_GAP_WATER_D5:LOOT_GAP_WATER;
+    waterTimerRef.current=setTimeout(()=>{waterRef.current=null;setWaterItem(null);waterTimerRef.current=setTimeout(scheduleWater,gap);},LOOT_VISIBLE_MS);
+  },[day]);
+
+  // Journal rescue item — only if entering day while wilting (state 2) on days 3+
+  const scheduleJournal=useCallback(()=>{
+    const ws=getWbState(wellbeingRef.current);
+    if(day<3||ws<2||ws>3)return; // only in wilting (2) or meh (3)
+    const delay=Math.random()*15000; // random within first 15s
+    journalTimerRef.current=setTimeout(()=>{
+      // Fixed lower-right area of the floor
+      const p={x:FLOOR.x+FLOOR.w-100,y:FLOOR.y+FLOOR.h-60};
+      const item={id:Date.now(),type:"journal",emoji:"📓",x:p.x,y:p.y,born:Date.now(),lifetime:JOURNAL_VISIBLE_MS};
+      journalRef.current=item;setJournalItem(item);
+      journalTimerRef.current=setTimeout(()=>{journalRef.current=null;setJournalItem(null);},JOURNAL_VISIBLE_MS);
+    },delay);
+  },[day]);
+
+  const scheduleTrueCrime=useCallback(()=>{
+    clearTimeout(trueCrimeTimerRef.current);
+    const p=randSafeFloor(50);
+    const item={id:Date.now(),type:"truecrime",emoji:"🕵🏻‍♀️🔍",x:p.x,y:p.y,born:Date.now(),lifetime:TRUE_CRIME_DURATION};
+    trueCrimeRef.current=item;setTrueCrimeItem(item);
+    trueCrimeTimerRef.current=setTimeout(()=>{
+      trueCrimeRef.current=null;setTrueCrimeItem(null);
+      const [gMin,gMax]=day===3?[800,2000]:[TRUE_CRIME_GAP_MIN,TRUE_CRIME_GAP_MAX];
+      const gap=gMin+Math.random()*(gMax-gMin);
+      trueCrimeTimerRef.current=setTimeout(scheduleTrueCrime,gap);
+    },TRUE_CRIME_DURATION);
+  },[day]);
+
+  const scheduleTrueCrime2=useCallback(()=>{
+    clearTimeout(trueCrimeTimerRef2.current);
+    const p=randSafeFloor(50);
+    const item={id:Date.now()+1,type:"truecrime",emoji:"🕵🏻‍♀️🔍",x:p.x,y:p.y,born:Date.now(),lifetime:TRUE_CRIME_DURATION};
+    trueCrimeRef2.current=item;setTrueCrimeItem2(item);
+    trueCrimeTimerRef2.current=setTimeout(()=>{
+      trueCrimeRef2.current=null;setTrueCrimeItem2(null);
+      const gap=1200+Math.random()*1200;
+      trueCrimeTimerRef2.current=setTimeout(scheduleTrueCrime2,gap);
+    },TRUE_CRIME_DURATION);
+  },[]);
+
+  const spawnLootFlower=useCallback(()=>{
+    if(!currentRef.current)return;
+    const needed=currentRef.current.colors.filter(c=>!bouquetRef.current.includes(c));
+    if(!needed.length)return;
+    const color=needed[Math.floor(Math.random()*needed.length)];
+    lootIdRef.current++;
+    const existing=[...lootRef.current];
+    const p=randSafeFloor(36,existing);
+    setLootItems(prev=>[...prev,{id:lootIdRef.current,type:"flower",color,emoji:FLOWERS[color].emoji,x:p.x,y:p.y,vx:(Math.random()-0.5)*0.8,vy:(Math.random()-0.5)*0.8,born:Date.now(),lifetime:3200+Math.random()*800}]);
+  },[]);
+
+  const stopAllTimers=useCallback(()=>{
+    [timerRef,gameLoopRef,lootSpawnRef,snackTimerRef,waterTimerRef,trueCrimeTimerRef,trueCrimeTimerRef2,journalTimerRef,spawnRef,napTimerRef,napIntervalRef,orderTimerRef,eatDrinkTimerRef].forEach(r=>{clearInterval(r.current);clearTimeout(r.current);});
+  },[]);
+
+  const startDay=useCallback((energyOverride)=>{
+    stopAllTimers();
+    const currentDay=day;
+    const lvlCfg=LEVELS[Math.min(currentDay,MAX_DAYS)];
+    customerIdRef.current=0;
+    const initEnergy=energyOverride??TOTAL_POINTS;
+    posRef.current={x:430,y:260};pointsRef.current=initEnergy;
+    bouquetRef.current=[];currentRef.current=null;
+    walkFrameRef.current=0;speedModRef.current=1;indulgeRef.current=0;
+    sleepingRef.current=false;snackRef.current=null;waterRef.current=null;trueCrimeRef.current=null;trueCrimeRef2.current=null;journalRef.current=null;skipToLossRef.current=false;
+    const fp=randFloor(80);friendPosRef.current=fp;friendTargRef.current=fp;
+
+    customerIdRef.current=1;
+    const fc=makeCustomer(1,0,lvlCfg.threeFlowerRate);
+    fc.x=QUEUE_START.x; fc.y=QUEUE_START.y; fc.state="queued";
+    fc.patience=fc.customerType==="elise"?9999:lvlCfg.patience;
+
+    setPos({x:430,y:260});setPoints(initEnergy);setBouquet([]);setCurrentOrder(null);
+    setOrderTimer(null);setCounterStatus("ready");setOutOfEnergy(false);
+    setCustomers([fc]);setCustomerCount(1);
+    setOrdersToday(0);setLostOrders(0);setOrderGoalMet(false);setCustomerFeedback([]);setSelfToday(0);setGivingToday(0);
+    setFriendChats(0);setSnacksEaten(0);setWatersToday(0);setNapsToday(0);
+    setTimeLeft(60);setWalkFrame(0);setSpeedMod(1);
+    setLootItems([]);setSnackItem(null);setWaterItem(null);setTrueCrimeItem(null);setTrueCrimeItem2(null);setJournalItem(null);
+    setFriendPos(fp);setSleeping(false);setNapProgress(0);setFriendBubble(null);setNearObj(null);
+    setPaused(false);setShowSettings(false);setRetryUsed(false);
+    setIsEating(false);setIsDrinking(false);isEatingRef.current=false;isDrinkingRef.current=false;
+    keysRef.current={};setScreen("game");
+  },[day,stopAllTimers]);
+
+  // Toggle pause
+  const togglePause=useCallback(()=>{
+    setPaused(p=>{pausedRef.current=!p;return !p;});
+    setShowSettings(false);
+  },[]);
+
+  const restartGame=useCallback(()=>{
+    stopAllTimers();
+    setDay(1);setWb(70);setStreak(0);setBest(0);setDayHistory([]);setStartEnergy(TOTAL_POINTS);setRetryUsed(false);
+    setShowSettings(false);setPaused(false);
+    setScreen("intro");
+  },[stopAllTimers]);
+
+  useEffect(()=>{
+    if(screen!=="game")return;
+    const down=e=>{
+      keysRef.current[e.key]=true;
+      if([" ","ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key))e.preventDefault();
+      if(e.key===" "&&!pausedRef.current)handleSpaceRef.current?.();
+      if(e.key==="Escape"){setPaused(p=>{pausedRef.current=!p;return !p;});setShowSettings(false);}
+    };
+    const up=e=>{keysRef.current[e.key]=false;};
+    window.addEventListener("keydown",down);window.addEventListener("keyup",up);
+    return()=>{window.removeEventListener("keydown",down);window.removeEventListener("keyup",up);};
+  },[screen]);
+
+  useEffect(()=>{
+    if(screen!=="game")return;
+    let tick=0;
+    gameLoopRef.current=setInterval(()=>{
+      if(pausedRef.current)return;
+      tick++;
+      if(sleepingRef.current||isEatingRef.current||isDrinkingRef.current)return;
+      const k=keysRef.current;
+      const pts=pointsRef.current;
+      const ws=getWbState(wellbeingRef.current);
+      const spd=effectiveSpeed(pts,ws,speedModRef.current);
+      let {x,y}=posRef.current;let moved=false,nf=null;
+      if(k["ArrowLeft"]||k["a"]){x=Math.max(FLOOR.x,x-spd);moved=true;nf="left";}
+      if(k["ArrowRight"]||k["d"]){x=Math.min(FLOOR.x+FLOOR.w-CHAR_W,x+spd);moved=true;nf="right";}
+      if(k["ArrowUp"]||k["w"]){y=Math.max(FLOOR.y,y-spd);moved=true;}
+      if(k["ArrowDown"]||k["s"]){y=Math.min(FLOOR.y+FLOOR.h-CHAR_H,y+spd);moved=true;}
+      posRef.current={x,y};setPos({x,y});setWalking(moved);
+      if(nf)setFacing(nf);
+      if(moved){walkFrameRef.current++;setWalkFrame(walkFrameRef.current);}
+      const sm=speedModRef.current;
+      if(Math.abs(sm-1)>0.01){speedModRef.current=sm>1?Math.max(1,sm-0.004):Math.min(1,sm+0.003);if(tick%6===0)setSpeedMod(speedModRef.current);}
+
+      setCustomers(prev=>{
+        const lvlCfg=LEVELS[Math.min(wellbeingRef.current>=20?Math.min(day,MAX_DAYS):day,MAX_DAYS)];
+        const patience=lvlCfg.patience;
+        const updated=prev.map(c=>{
+          if(c.state==="approaching"){const dx=c.tx-c.x,dy=c.ty-c.y,dist=Math.sqrt(dx*dx+dy*dy);if(dist<3)return{...c,x:c.tx,y:c.ty,state:"queued",patience};return{...c,x:c.x+(dx/dist)*1.6,y:c.y+(dy/dist)*1.6};}
+          if(c.state==="leaving_happy"){const dx=EXIT_X-c.x,dy=0,dist=Math.abs(EXIT_X-c.x);if(dist<5)return null;return{...c,x:c.x-2.2};}
+          if(c.state==="leaving"){const dx=EXIT_X-c.x,dy=0,dist=Math.abs(EXIT_X-c.x);if(dist<5)return null;return{...c,x:c.x-2.2};}
+          if((c.state==="queued"||c.state==="impatient")&&tick%60===0){const np=c.patience-1;if(np<=0)return{...c,state:"leaving"};return{...c,patience:np,state:np<=5?"impatient":"queued"};}
+          return c;
+        }).filter(Boolean);
+        setCustomerCount(updated.filter(c=>c.state!=="leaving"&&c.state!=="leaving_happy").length);
+        return updated;
+      });
+
+      const now=Date.now();
+      setLootItems(prev=>prev.filter(f=>now-f.born<f.lifetime).map(f=>{let nx=f.x+f.vx,ny=f.y+f.vy,nvx=f.vx,nvy=f.vy;if(nx<FLOOR.x+14||nx>FLOOR.x+FLOOR.w-22)nvx=-nvx;if(ny<FLOOR.y+14||ny>FLOOR.y+FLOOR.h-22)nvy=-nvy;return{...f,x:nx,y:ny,vx:nvx,vy:nvy};}));
+
+      const fp=friendPosRef.current,ft=friendTargRef.current;
+      const fdx=ft.x-fp.x,fdy=ft.y-fp.y,fdist=Math.sqrt(fdx*fdx+fdy*fdy);
+      if(fdist>4){const nfp={x:fp.x+(fdx/fdist)*FRIEND_SPEED,y:fp.y+(fdy/fdist)*FRIEND_SPEED};friendPosRef.current=nfp;setFriendPos({...nfp});setFriendFacing(fdx>=0?"right":"left");setFriendWalking(true);friendWFRef.current++;setFriendWalkFrame(friendWFRef.current);}
+      else{setFriendWalking(false);if(tick%180===0)friendTargRef.current=randFloor(60);}
+
+      const hasWaiting=customersRef.current.some(c=>c.state==="queued"||c.state==="impatient");
+      const hasAccepted=customersRef.current.some(c=>c.state==="accepted");
+      setCounterStatus(hasAccepted?"preparing":hasWaiting?"ready":"idle");
+
+      const cx=x+CHAR_W/2,cy=y+CHAR_H/2;let found=null;
+      if(cx>COUNTER.x-34&&cx<COUNTER.x+COUNTER.w+34&&cy>COUNTER.y-34&&cy<COUNTER.y+COUNTER.h+34)found="counter";
+      if(!found)for(const f of lootRef.current){if(Math.sqrt((cx-f.x)**2+(cy-f.y)**2)<36){found=`loot_${f.id}`;break;}}
+      if(!found&&snackRef.current){const s=snackRef.current;if(Math.sqrt((cx-s.x)**2+(cy-s.y)**2)<36)found="snack";}
+      if(!found&&waterRef.current){const w=waterRef.current;if(Math.sqrt((cx-w.x)**2+(cy-w.y)**2)<36)found="water";}
+      if(!found&&journalRef.current){const j=journalRef.current;if(Math.sqrt((cx-j.x)**2+(cy-j.y)**2)<36)found="journal";}
+      if(!found&&trueCrimeRef.current){
+        const t=trueCrimeRef.current;
+        const tcDist=Math.sqrt((cx-t.x)**2+(cy-t.y)**2);
+        if(tcDist<40){
+          found="truecrime";
+          const drain=Math.min(pointsRef.current,TRUE_CRIME_COST);
+          if(drain>0){pointsRef.current=Math.max(0,pointsRef.current-drain);setPoints(pointsRef.current);showDelta(-drain);}
+          trueCrimeRef.current=null;setTrueCrimeItem(null);
+        }
+      }
+      if(!found&&trueCrimeRef2.current){
+        const t2=trueCrimeRef2.current;
+        const tcDist2=Math.sqrt((cx-t2.x)**2+(cy-t2.y)**2);
+        if(tcDist2<40){
+          found="truecrime";
+          const drain=Math.min(pointsRef.current,TRUE_CRIME_COST);
+          if(drain>0){pointsRef.current=Math.max(0,pointsRef.current-drain);setPoints(pointsRef.current);showDelta(-drain);}
+          trueCrimeRef2.current=null;setTrueCrimeItem2(null);
+        }
+      }
+      if(!found){const fp2=friendPosRef.current;if(Math.sqrt((cx-fp2.x)**2+(cy-fp2.y)**2)<42)found="friend";}
+      if(!found&&cx>BED.x-30&&cx<BED.x+BED.w+30&&cy>BED.y-30&&cy<BED.y+BED.h+30)found="bed";
+      setNearObj(found);
+    },16);
+    return()=>clearInterval(gameLoopRef.current);
+  },[screen,day,showDelta]);
+
+  useEffect(()=>{if(screen!=="game")return;const loop=()=>{if(!pausedRef.current&&currentRef.current)spawnLootFlower();lootSpawnRef.current=setTimeout(loop,600+Math.random()*400);};lootSpawnRef.current=setTimeout(loop,400);return()=>clearTimeout(lootSpawnRef.current);},[screen,spawnLootFlower]);
+  useEffect(()=>{if(screen!=="game")return;scheduleSnack();return()=>clearTimeout(snackTimerRef.current);},[screen,scheduleSnack]);
+  useEffect(()=>{if(screen!=="game")return;scheduleWater();return()=>clearTimeout(waterTimerRef.current);},[screen,scheduleWater]);
+  useEffect(()=>{if(screen!=="game")return;scheduleJournal();return()=>clearTimeout(journalTimerRef.current);},[screen,scheduleJournal]);
+  useEffect(()=>{if(screen!=="game")return;const t=setTimeout(scheduleTrueCrime,5000+Math.random()*5000);return()=>{clearTimeout(t);clearTimeout(trueCrimeTimerRef.current);};},[screen,scheduleTrueCrime]);
+  useEffect(()=>{if(screen!=="game"||day!==3)return;const t=setTimeout(scheduleTrueCrime2,7000+Math.random()*3000);return()=>{clearTimeout(t);clearTimeout(trueCrimeTimerRef2.current);};},[screen,day,scheduleTrueCrime2]);
+
+  useEffect(()=>{
+    if(screen!=="game")return;
+    const lvlCfg=LEVELS[Math.min(day,MAX_DAYS)];
+    const [minGap,maxGap]=lvlCfg.spawnGap;
+    const loop=()=>{
+      if(!pausedRef.current){
+        const active=customersRef.current.filter(c=>c.state!=="leaving"&&c.state!=="leaving_happy").length;
+        if(active<4){
+          customerIdRef.current++;
+          const id=customerIdRef.current;
+          const qIdx=customersRef.current.filter(c=>c.state==="queued"||c.state==="impatient").length;
+          const c=makeCustomer(id,qIdx,lvlCfg.threeFlowerRate);
+          c.patience=c.customerType==="elise"?9999:lvlCfg.patience;
+          setCustomers(prev=>[...prev,c]);
+        }
+      }
+      spawnRef.current=setTimeout(loop,minGap+Math.random()*(maxGap-minGap));
+    };
+    spawnRef.current=setTimeout(loop,minGap*0.6);
+    return()=>clearTimeout(spawnRef.current);
+  },[screen,day]);
+
+  useEffect(()=>{
+    if(screen!=="game")return;
+    timerRef.current=setInterval(()=>{
+      if(pausedRef.current)return;
+      setTimeLeft(t=>{if(t<=1){endDay();return 0;}return t-1;});
+    },1000);
+    return()=>clearInterval(timerRef.current);
+  },[screen]);
+
+  const endDay=useCallback(()=>{
+    stopAllTimers();
+    setSleeping(false);sleepingRef.current=false;setScreen("endofday");
+  },[stopAllTimers]);
+
+  useEffect(()=>{
+    if(screen!=="endofday")return;
+    const rec=ordersToday>best&&ordersToday>0;
+    setIsNewRecord(rec);if(rec)setBest(ordersToday);
+    const eodState=getWbState(wellbeing);
+    const eodMinOrders=LEVELS[Math.min(day,MAX_DAYS)].minOrders;
+    const failedOrders=ordersToday<eodMinOrders;
+    const lowEnergy=pointsRef.current<MIN_ENERGY_EOD;
+
+    // Carry-over energy
+    const nextEnergy=carryOverEnergy(pointsRef.current);
+    setStartEnergy(nextEnergy);
+
+    // Mood rule: each mood state spans ~20 wellbeing points.
+    // Drop one level if: ended below 5 energy OR self-care < 30% of order actions.
+    // Rise one level if: ended above 5 energy AND self-care is proportional.
+    // Failed orders is an additional hard hit.
+    const selfCareRatio = givingToday > 0 ? selfToday / givingToday : (selfToday > 0 ? 1 : 0);
+    const insufficientSelfCare = selfCareRatio < 0.30; // less than 1 self-care per ~3 orders
+    const shouldDrop = lowEnergy || insufficientSelfCare;
+
+    let wbDelta;
+    if(failedOrders){
+      // Failed orders: drop two levels worth
+      wbDelta = -24;
+    } else if(shouldDrop){
+      // Drop one mood level (~20 points)
+      wbDelta = -20;
+    } else {
+      // Rise one mood level (~20 points)
+      wbDelta = +20;
+    }
+
+    const newWb=Math.max(5,Math.min(100,wellbeing+wbDelta));
+    const newState=getWbState(newWb);
+    const moodImproved = newState > eodState; // moved up a level
+    // Flag for direct gameover routing (skip showing stats screen)
+    if(newWb<=10||(failedOrders&&retryUsed))skipToLossRef.current=true;
+
+    setDayHistory(prev=>[...prev,{
+      day,orders:ordersToday,lost:lostOrders,
+      mood:WB[eodState].name,moodEmoji:WB[eodState].moodEmoji,
+      moodColor:WB[eodState].moodColor,moodBg:WB[eodState].moodBg,
+      nextMood:WB[newState].name,nextMoodEmoji:WB[newState].moodEmoji,
+      nextMoodColor:WB[newState].moodColor,nextMoodBg:WB[newState].moodBg,
+      minOrders:eodMinOrders,failedOrders,lowEnergy,
+      moodImproved,
+    }]);
+    setWb(newWb);
+    setStreak(prev=>(!failedOrders&&!shouldDrop)?prev+1:0);
+  },[screen]);
+
+  // Lose condition: failed orders OR wilted
+  useEffect(()=>{
+    if(screen!=="endofday")return;
+    const eodMinOrders=LEVELS[Math.min(day,MAX_DAYS)].minOrders;
+    const failedOrders=ordersToday<eodMinOrders;
+    const wilted=wellbeing<=10;
+    if(wilted){setScreen("gameover");return;}
+    if(failedOrders){
+      if(retryUsed){setScreen("gameover");}
+      return;
+    }
+    if(day>=MAX_DAYS){setTimeout(()=>setScreen("win"),1800);return;}
+  },[screen,wellbeing,ordersToday,day,retryUsed]);
+
+  const showFriendBubble=useCallback((msg,overchat=false)=>{
+    clearTimeout(friendBubbleTimerRef.current);
+    setFriendBubble({msg,overchat});
+    friendBubbleTimerRef.current=setTimeout(()=>setFriendBubble(null),4000);
+  },[]);
+
+  const startNap=useCallback(()=>{
+    if(sleepingRef.current)return;
+    sleepingRef.current=true;setSleeping(true);setNapProgress(0);setWalking(false);
+    const start=Date.now();
+    napIntervalRef.current=setInterval(()=>setNapProgress(Math.min(100,((Date.now()-start)/NAP_DURATION)*100)),80);
+    napTimerRef.current=setTimeout(()=>{
+      clearInterval(napIntervalRef.current);
+      sleepingRef.current=false;setSleeping(false);setNapProgress(0);
+      pointsRef.current=Math.min(TOTAL_POINTS,pointsRef.current+NAP_ENERGY);
+      setPoints(pointsRef.current);showDelta(+NAP_ENERGY);setSelfToday(s=>s+1);setNapsToday(n=>n+1);
+    },NAP_DURATION);
+  },[]);
+
+  const handleSpace=useCallback(()=>{
+    if(sleepingRef.current||pausedRef.current||isEatingRef.current||isDrinkingRef.current)return;
+    const obj=nearObj,pts=pointsRef.current,bq=bouquetRef.current,cur=currentRef.current;
+    if(obj==="bed"){startNap();return;}
+    if(obj==="counter"){
+      const first=customersRef.current.find(c=>c.state==="queued"||c.state==="impatient");
+      if(!first||cur)return;
+      if(pts<ACCEPT_COST){showOutOfEnergy();return;}
+      pointsRef.current=Math.max(0,+(pts-ACCEPT_COST).toFixed(6));setPoints(pointsRef.current);
+      showDelta(-ACCEPT_COST);
+      currentRef.current={...first.order};setCurrentOrder({...first.order});
+      setBouquet([]);bouquetRef.current=[];
+      setCustomers(prev=>prev.map(c=>c.id===first.id?{...c,state:"accepted"}:c));
+      setCounterStatus("preparing");startOrderTimer();return;
+    }
+    if(obj?.startsWith("loot_")){
+      const lid=parseInt(obj.split("_")[1]);
+      const flower=lootRef.current.find(f=>f.id===lid);
+      if(!flower||!cur)return;
+      if(pts<COLLECT_COST){showOutOfEnergy();return;}
+      // Wrong flower — no penalty, just don't collect
+      if(bq.includes(flower.color)||!cur.colors.includes(flower.color)){
+        return;
+      }
+      pointsRef.current=Math.max(0,pts-COLLECT_COST);setPoints(pointsRef.current);
+      showDelta(-COLLECT_COST);
+      const newBq=[...bq,flower.color];bouquetRef.current=newBq;setBouquet(newBq);
+      setLootItems(prev=>prev.filter(f=>f.id!==lid));
+      const remaining=cur.colors.filter(c=>!newBq.includes(c));
+      if(remaining.length===0){
+        clearInterval(orderTimerRef.current);setOrderTimer(null);
+        const reward=orderReward(newBq.length);
+        pointsRef.current=Math.max(0,pointsRef.current-DELIVER_COST);
+        pointsRef.current=Math.min(TOTAL_POINTS,pointsRef.current+reward);
+        setPoints(pointsRef.current);
+        showDelta(reward);
+        setOrdersToday(n=>{
+          const next=n+1;
+          const minNeeded=LEVELS[Math.min(day,MAX_DAYS)].minOrders;
+          if(next===minNeeded&&!orderGoalMet){setOrderGoalMet(true);}
+          return next;
+        });
+        setGivingToday(g=>g+1);
+        const cust=customersRef.current.find(c=>c.state==="accepted");
+        currentRef.current=null;setCurrentOrder(null);setBouquet([]);bouquetRef.current=[];setLootItems([]);
+        setCounterStatus("idle");
+        if(cust){
+          const cfg=CUSTOMERS[cust.customerType]||CUSTOMERS.erica;
+          const happyKey=`${cust.customerType}_happy`;
+          const happyIdx=(feedbackIndicesRef.current[happyKey]||0)%cfg.happyMsgs.length;
+          feedbackIndicesRef.current[happyKey]=(happyIdx+1);
+          const msg=cfg.happyMsgs[happyIdx];
+          setCustomers(prev=>prev.map(c=>c.id===cust.id?{...c,state:"leaving_happy",bouquet:newBq,feedback:msg}:c));
+          setCustomerFeedback(prev=>[...prev,{name:cust.customerName,color:cust.customerColor,type:cust.customerType,msg,happy:true}]);
+        }
+        indulgeRef.current=Math.max(0,indulgeRef.current-1);
+      }
+      return;
+    }
+    if(obj==="snack"){
+      snackRef.current=null;setSnackItem(null);
+      isEatingRef.current=true;setIsEating(true);setWalking(false);
+      clearTimeout(eatDrinkTimerRef.current);
+      eatDrinkTimerRef.current=setTimeout(()=>{
+        isEatingRef.current=false;setIsEating(false);
+        pointsRef.current=Math.min(TOTAL_POINTS,pointsRef.current+SNACK_ENERGY);
+        setPoints(pointsRef.current);
+        showDelta(+SNACK_ENERGY);
+        setSelfToday(s=>s+1);setSnacksEaten(n=>n+1);
+        speedModRef.current=Math.min(1.6,speedModRef.current+0.18);setSpeedMod(speedModRef.current);
+      },EAT_DRINK_PAUSE);
+      return;
+    }
+    if(obj==="water"){
+      waterRef.current=null;setWaterItem(null);
+      pointsRef.current=Math.min(TOTAL_POINTS,pointsRef.current+WATER_ENERGY);
+      setPoints(pointsRef.current);
+      showDelta(+WATER_ENERGY);
+      setSelfToday(s=>s+1);setWatersToday(n=>n+1);
+      speedModRef.current=Math.min(1.6,speedModRef.current+0.12);setSpeedMod(speedModRef.current);
+      return;
+    }
+    if(obj==="journal"&&journalRef.current){
+      journalRef.current=null;setJournalItem(null);
+      clearTimeout(journalTimerRef.current);
+      pointsRef.current=Math.min(TOTAL_POINTS,pointsRef.current+JOURNAL_ENERGY);
+      setPoints(pointsRef.current);showDelta(+JOURNAL_ENERGY);setSelfToday(s=>s+1);
+      return;
+    }
+    if(obj==="truecrime"){return;}
+    if(obj==="friend"){
+      if(day===4)return; // friend is sick on Day 4
+      const isLowEnergy=pointsRef.current<LOW_ENERGY_THRESHOLD;
+      const overLimit=friendChats>=4;
+      if(overLimit){
+        pointsRef.current=Math.max(0,pointsRef.current-FRIEND_OVERCHAT_COST);
+        setPoints(pointsRef.current);
+        showDelta(-FRIEND_OVERCHAT_COST);
+        const msg=FRIEND_MSGS_OVERCHAT[Math.floor(Math.random()*FRIEND_MSGS_OVERCHAT.length)];
+        showFriendBubble(msg,true);
+        friendTargRef.current=randFloor(60);return;
+      }
+      pointsRef.current=Math.min(TOTAL_POINTS,pointsRef.current+FRIEND_ENERGY_GAIN);setPoints(pointsRef.current);
+      showDelta(+FRIEND_ENERGY_GAIN);
+      setSelfToday(s=>s+1);setFriendChats(n=>n+1);indulgeRef.current++;
+      let msg;
+      if(isLowEnergy){msg=FRIEND_MSGS_LOW_ENERGY[Math.floor(Math.random()*FRIEND_MSGS_LOW_ENERGY.length)];}
+      else{const idx=(friendMsgIdx+1)%FRIEND_MSGS_NORMAL.length;setFriendMsgIdx(idx);msg=FRIEND_MSGS_NORMAL[idx];}
+      showFriendBubble(msg,false);
+      speedModRef.current=Math.min(1.6,speedModRef.current+0.22);setSpeedMod(speedModRef.current);
+      friendTargRef.current=randFloor(60);return;
+    }
+  },[nearObj,friendMsgIdx,startNap,showFriendBubble,startOrderTimer,showOutOfEnergy,showDelta,day,orderGoalMet]);
+
+  handleSpaceRef.current=handleSpace;
+
+  const bg="radial-gradient(ellipse at 30% 20%,#fff7ed 0%,#fdf2f8 50%,#f5f3ff 100%)";
+  const timerColor=timeLeft>30?"#22c55e":timeLeft>15?"#f59e0b":"#ef4444";
+  const queuedCusts=customers.filter(c=>c.state==="queued"||c.state==="impatient"||c.state==="accepted");
+  const movingCusts=customers.filter(c=>c.state==="approaching"||c.state==="leaving"||c.state==="leaving_happy");
+  const moodCfg=WB[wState];
+  const isLowEnergy=points<LOW_ENERGY_THRESHOLD;
+  const isZeroEnergy=points<=0;
+  const isMoodSlowed=wState<=SLOW_MOOD_THRESHOLD&&isLowEnergy;
+  const sharedStyle={width:W,height:H,fontFamily:"Georgia,serif"};
+
+  // ── INTRO ──────────────────────────────────────────────────────────────────
+  if(screen==="intro")return(
+    <div style={{...sharedStyle,background:bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",overflow:"hidden",position:"relative",padding:"0 16px"}}>
+      <style>{`@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}} @keyframes fade-up{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}} @keyframes loot-bob{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-6px) scale(1.1)}} @keyframes selfcare-glow{0%,100%{opacity:0.5}50%{opacity:1}} @keyframes truecrime-pulse{0%,100%{opacity:0.4}50%{opacity:0.9}} @keyframes journal-pulse{0%,100%{opacity:0.55;transform:scale(0.88)}50%{opacity:1;transform:scale(1.14)}}`}</style>
+      {[...Array(8)].map((_,i)=>(<div key={i} style={{position:"absolute",left:`${8+i*11}%`,top:`${10+(i%4)*24}%`,width:12+(i%3)*8,height:12+(i%3)*8,borderRadius:"60% 40% 60% 40%",background:["#fda4af","#c4b5fd","#fcd34d","#86efac","#fdba74"][i%5],opacity:0.14,transform:`rotate(${i*32}deg)`}}/>))}
+
+      {/* Header row — avatar + title side by side to save vertical space */}
+      <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:6,animation:"fade-up 0.4s 0.1s both"}}>
+        <div style={{animation:"float 3.5s ease-in-out infinite"}}><Char state={4} facing="right" walking={false} walkFrame={0} size={52}/></div>
+        <div>
+          <h1 style={{fontSize:32,fontWeight:"bold",color:"#9d174d",margin:0,letterSpacing:-1,lineHeight:1}}>Sabannah's Flower Shop</h1>
+        </div>
+      </div>
+
+      {/* Info card */}
+      <div style={{background:"rgba(255,255,255,0.88)",backdropFilter:"blur(8px)",borderRadius:16,padding:"10px 18px",width:"100%",maxWidth:520,marginBottom:8,animation:"fade-up 0.4s 0.2s both",boxShadow:"0 4px 20px rgba(244,114,182,0.12)",border:"1px solid rgba(244,114,182,0.18)"}}>
+        <p style={{margin:"0 0 7px",color:"#374151",fontSize:11,lineHeight:1.7}}>
+          You have <strong>5 days</strong> to keep your flower shop thriving. Each day is <strong>1 minute</strong>. A customer is already waiting!<br/>
+          <strong>Collect flowers to complete orders 🌹💜🌻.</strong> Speed scales with energy — stay fuelled.<br/>
+          Avoid <strong>🕵🏻‍♀️🔍 true crime</strong> — walking into it costs −3⚡!
+        </p>
+        {/* SPACE usage — 2 columns */}
+        <div style={{borderTop:"1px solid #f3f4f6",paddingTop:7}}>
+          <div style={{fontSize:9,color:"#9ca3af",letterSpacing:1,textTransform:"uppercase",marginBottom:5}}>Press SPACE to…</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"3px 12px"}}>
+            {[
+              ["🏪","Accept an order at the counter"],
+              ["🌹","Collect a flower for your bouquet"],
+              ["🥚","Eat an egg (+2⚡, 2s pause)"],
+              ["💧","Drink water (+1⚡, instant)"],
+              [null,"Chat with friend (+½⚡, max 4×)"],
+              ["🛏️","Nap in the bed (+3⚡, 5s)"],
+            ].map(([icon,desc])=>(
+              <div key={desc} style={{display:"flex",alignItems:"center",gap:5,fontSize:10,color:"#374151",padding:"2px 0"}}>
+                <span style={{fontSize:13,minWidth:18,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  {icon===null?(
+                    <svg width="18" height="18" viewBox="0 0 24 24">
+                      <ellipse cx="12" cy="4" rx="8" ry="5" fill="#c084fc" opacity="0.85"/>
+                      <circle cx="12" cy="11" r="7" fill="#fde68a"/>
+                      <circle cx="9.5" cy="11" r="1.2" fill="#374151"/>
+                      <circle cx="14.5" cy="11" r="1.2" fill="#374151"/>
+                      <path d="M9.5 14.5 Q12 17 14.5 14.5" stroke="#374151" strokeWidth="1" fill="none" strokeLinecap="round"/>
+                    </svg>
+                  ):icon}
+                </span>
+                <span>{desc}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Controls + button row */}
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8,animation:"fade-up 0.4s 0.3s both"}}>
+        {[["↑↓←→","move"],["SPACE","interact"],["ESC","pause"]].map(([k,l])=>(<div key={k} style={{background:"rgba(255,255,255,0.9)",borderRadius:7,padding:"3px 9px",fontSize:9,color:"#374151",border:"1px solid #e5e7eb",fontFamily:"monospace"}}><strong>{k}</strong> — {l}</div>))}
+      </div>
+      <button onClick={()=>setScreen("daybrief")} style={{background:"linear-gradient(135deg,#ec4899,#9d174d)",color:"white",border:"none",borderRadius:14,padding:"12px 44px",fontSize:15,fontFamily:"Georgia,serif",cursor:"pointer",fontWeight:"bold",boxShadow:"0 6px 24px rgba(236,72,153,0.35)",animation:"fade-up 0.4s 0.35s both"}}>Open the shop →</button>
+    </div>
+  );
+
+  // ── DAY BRIEF ──────────────────────────────────────────────────────────────
+  if(screen==="daybrief"){
+    const briefLvl=LEVELS[Math.min(day,MAX_DAYS)];
+    const moodAtStart=WB[wState];
+    const isReturning=dayHistory.length>0;
+    const energyNote=startEnergy<TOTAL_POINTS
+      ? `You're starting with ${startEnergy.toFixed(1)} energy — rest helped, but you're not fully recovered.`
+      : null;
+    return(
+      <div style={{...sharedStyle,background:bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",overflow:"hidden",position:"relative"}}>
+        <style>{`@keyframes pop{0%{transform:scale(0.7);opacity:0}70%{transform:scale(1.05)}100%{transform:scale(1);opacity:1}} @keyframes fade-up{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}} @keyframes loot-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}} @keyframes selfcare-glow{0%,100%{opacity:0.5}50%{opacity:1}} @keyframes truecrime-pulse{0%,100%{opacity:0.4}50%{opacity:0.9}} @keyframes journal-pulse{0%,100%{opacity:0.55;transform:scale(0.88)}50%{opacity:1;transform:scale(1.14)}}`}</style>
+        {[...Array(8)].map((_,i)=>(<div key={i} style={{position:"absolute",left:`${5+i*12}%`,top:`${10+(i%3)*28}%`,width:14+(i%3)*10,height:14+(i%3)*10,borderRadius:"60% 40% 60% 40%",background:["#fda4af","#c4b5fd","#fcd34d","#86efac","#fdba74"][i%5],opacity:0.13,transform:`rotate(${i*40}deg)`}}/>))}
+
+        <div style={{animation:"fade-up 0.4s ease-out",textAlign:"center",maxWidth:460}}>
+          <div style={{fontSize:12,color:"#be185d",letterSpacing:2,textTransform:"uppercase",marginBottom:6,fontWeight:"bold"}}>
+            Day {day} of {MAX_DAYS}
+          </div>
+          <h2 style={{fontSize:30,fontWeight:"bold",color:"#9d174d",margin:"0 0 4px",letterSpacing:-1}}>
+            {briefLvl.label}
+          </h2>
+
+          {/* Mood entering with */}
+          <div style={{display:"inline-flex",alignItems:"center",gap:8,background:moodAtStart.moodBg,borderRadius:20,padding:"6px 16px",border:`1.5px solid ${moodAtStart.moodColor}44`,marginBottom:16,marginTop:8}}>
+            <Char state={wState} facing="right" walking={false} walkFrame={0} size={24}/>
+            <span style={{fontSize:13,fontWeight:"bold",color:moodAtStart.moodColor}}>{moodAtStart.moodEmoji} {moodAtStart.name==="fine"?"starting the day in a fine mood cause you didn't listen to the marias":`Starting as ${moodAtStart.name}`}</span>
+          </div>
+
+          {/* Custom day message — the key narrative prompt */}
+          <div style={{background:"white",borderRadius:20,padding:"18px 28px",marginBottom:14,boxShadow:"0 4px 24px rgba(244,114,182,0.14)",border:"2px solid rgba(244,114,182,0.2)",animation:"pop 0.5s 0.1s both"}}>
+            <div style={{fontSize:15,color:"#374151",lineHeight:1.7,fontStyle:"italic"}}>"{briefLvl.briefMsg}"</div>
+            <div style={{marginTop:12,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+              <div style={{fontSize:11,color:"#9ca3af"}}>Goal:</div>
+              <div style={{fontSize:28,fontWeight:"bold",color:"#ec4899",lineHeight:1}}>{briefLvl.minOrders}</div>
+              <div style={{fontSize:11,color:"#6b7280"}}>orders</div>
+            </div>
+          </div>
+
+          {energyNote&&(
+            <div style={{background:"#fff7ed",border:"1.5px solid #fed7aa",borderRadius:12,padding:"9px 18px",marginBottom:12,fontSize:11,color:"#c2410c",animation:"pop 0.5s 0.15s both"}}>
+              ⚡ {energyNote}
+            </div>
+          )}
+
+          {isReturning&&(
+            <div style={{background:"rgba(255,255,255,0.82)",borderRadius:12,padding:"9px 18px",marginBottom:12,fontSize:11,color:"#6b7280",animation:"pop 0.5s 0.2s both",border:"1px solid rgba(244,114,182,0.15)"}}>
+              Snacks 🍓, water 💧, and your friend 🫶 are all free.<br/>
+              Keep your energy above 5 to stay at your best.
+            </div>
+          )}
+
+          <button
+            onClick={()=>{ day===1?startDay(TOTAL_POINTS):startDay(startEnergy); }}
+            style={{background:"linear-gradient(135deg,#ec4899,#9d174d)",color:"white",border:"none",borderRadius:14,padding:"14px 52px",fontSize:16,fontFamily:"Georgia,serif",cursor:"pointer",fontWeight:"bold",boxShadow:"0 6px 24px rgba(236,72,153,0.35)",animation:"pop 0.5s 0.25s both"}}
+          >
+            {day===1?"Start Day 1 →":`Begin Day ${day} →`}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── END OF DAY ─────────────────────────────────────────────────────────────
+  if(screen==="endofday"){
+    if(skipToLossRef.current)return <div style={{...sharedStyle,background:"#f1f5f9"}}/>;
+    const eodW=getWbState(wellbeing),eodM=WB[eodW];
+    const lowEnergyPenalty=pointsRef.current<MIN_ENERGY_EOD;
+    const eodMinOrders=LEVELS[Math.min(day,MAX_DAYS)].minOrders;
+    const failedOrders=ordersToday<eodMinOrders;
+    const lastH=dayHistory[dayHistory.length-1];
+    const nextMoodCfg=WB[getWbState(wellbeing)];
+    const isLastDay=day>=MAX_DAYS;
+
+    // Temperature bar: 5 zones mapped to wellbeing 0-100
+    const moodZones=[
+      {label:"WEEEE",  color:"#f472b6", emoji:"🌸"},
+      {label:"fine",   color:"#4ade80", emoji:"😊"},
+      {label:"meh",    color:"#fbbf24", emoji:"😐"},
+      {label:"wilting",color:"#94a3b8", emoji:"😔"},
+      {label:"acid reflux",color:"#78716c",emoji:"🥀"},
+    ];
+    // wellbeing 100→80 = zone 0, 80→60 = zone 1, 60→40=2, 40→20=3, 20→0=4
+    const tempPct = Math.max(0,Math.min(100,wellbeing)); // 0-100
+    // position on bar: 100=top, 0=bottom
+    const markerTop = 100 - tempPct; // % from top
+
+    return(
+      <div style={{...sharedStyle,background:eodM.moodBg,display:"flex",flexDirection:"column",padding:"8px 16px",overflow:"hidden"}}>
+        <style>{`
+          @keyframes pop{0%{transform:scale(0.7);opacity:0}70%{transform:scale(1.05)}100%{transform:scale(1);opacity:1}}
+          @keyframes credits-scroll{0%{transform:translateY(0%)}100%{transform:translateY(-50%)}}
+          @keyframes loot-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+          @keyframes selfcare-glow{0%,100%{opacity:0.5}50%{opacity:1}}
+          @keyframes truecrime-pulse{0%,100%{opacity:0.4}50%{opacity:0.9}}
+          @keyframes journal-pulse{0%,100%{opacity:0.55;transform:scale(0.88)}50%{opacity:1;transform:scale(1.14)}}
+        `}</style>
+
+        {/* Header */}
+        {isNewRecord&&<div style={{background:"#fef9c3",border:"2px solid #fde047",borderRadius:8,padding:"3px 12px",marginBottom:4,fontSize:10,color:"#854d0e",fontWeight:"bold",animation:"pop 0.4s ease-out",alignSelf:"center"}}>✨ New record — {ordersToday} orders!</div>}
+        <h2 style={{fontSize:16,color:eodM.moodColor,margin:"0 0 6px",textAlign:"center"}}>{LEVELS[Math.min(day,MAX_DAYS)].label} — Day {day}</h2>
+
+        {/* Two-column body */}
+        <div style={{display:"flex",gap:10,flex:1,minHeight:0,alignItems:"flex-start",maxWidth:700,margin:"0 auto",width:"100%"}}>
+
+          {/* LEFT — Yelp Reviews scrolling */}
+          <div style={{width:160,flexShrink:0,background:"white",borderRadius:14,overflow:"hidden",height:260,border:"1.5px solid #e5e7eb",boxShadow:"0 2px 10px rgba(0,0,0,0.07)",display:"flex",flexDirection:"column"}}>
+            <div style={{padding:"8px 12px",borderBottom:"1px solid #f3f4f6",background:"#fff",display:"flex",alignItems:"center",gap:6}}>
+              <span style={{fontSize:14}}>⭐</span>
+              <span style={{fontSize:11,fontWeight:"bold",color:"#374151"}}>Yelp Reviews</span>
+              <span style={{fontSize:9,color:"#9ca3af",marginLeft:"auto"}}>{customerFeedback.length} today</span>
+            </div>
+            <div style={{flex:1,overflow:"hidden",position:"relative"}}>
+              {customerFeedback.length===0?(
+                <div style={{padding:"20px 12px",fontSize:10,color:"#9ca3af",textAlign:"center"}}>No reviews yet today</div>
+              ):(
+                <div style={{
+                  position:"absolute",
+                  width:"100%",
+                  animation:`credits-scroll ${Math.max(8,customerFeedback.length*3)}s linear infinite`,
+                  paddingTop:8,
+                }}>
+                  {[...customerFeedback,...customerFeedback].map((f,i)=>{
+                    const fp=CUST_PHOTOS[f.type];
+                    return(
+                    <div key={i} style={{padding:"8px 10px",borderBottom:"1px solid #f9f9f9",display:"flex",alignItems:"flex-start",gap:7}}>
+                      {fp?(
+                        <div style={{width:28,height:28,borderRadius:"50%",overflow:"hidden",flexShrink:0,border:`2px solid ${f.happy?"#f472b6":"#ef4444"}`}}>
+                          <img src={fp} style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"top center"}} alt={f.name}/>
+                        </div>
+                      ):(
+                        <div style={{width:28,height:28,borderRadius:"50%",background:f.color,flexShrink:0,border:`2px solid ${f.happy?"#f472b6":"#ef4444"}`}}/>
+                      )}
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:2}}>
+                          <span style={{fontSize:10,fontWeight:"bold",color:"#374151"}}>{f.name}</span>
+                          <span style={{marginLeft:"auto",fontSize:12}}>{f.happy?"😊":"😔"}</span>
+                        </div>
+                        <div style={{fontSize:9,color:f.happy?"#15803d":"#dc2626",fontStyle:"italic",lineHeight:1.5}}>"{f.msg}"</div>
+                      </div>
+                    </div>
+                  )})}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* RIGHT — stats column */}
+          <div style={{flex:1,display:"flex",flexDirection:"column",gap:6}}>
+
+            {/* Combined: mood bar + warnings + next-day preview */}
+            <div style={{background:"white",borderRadius:12,padding:"10px 12px",boxShadow:"0 2px 8px rgba(0,0,0,0.07)",border:"1.5px solid #e5e7eb",display:"flex",flexDirection:"column",gap:6}}>
+              <div style={{fontSize:8,color:"#9ca3af",letterSpacing:1,textTransform:"uppercase",textAlign:"center"}}>Mood</div>
+              <div style={{position:"relative",height:16,borderRadius:8,background:"linear-gradient(to right, #78716c 0%, #94a3b8 25%, #fbbf24 50%, #4ade80 75%, #f472b6 100%)"}}>
+                <div style={{position:"absolute",top:"50%",left:`${100-markerTop}%`,transform:"translate(-50%,-50%)",width:20,height:20,borderRadius:"50%",background:"white",border:`2.5px solid ${eodM.moodColor}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,zIndex:2,boxShadow:"0 1px 4px rgba(0,0,0,0.2)"}}>
+                  {eodM.moodEmoji}
+                </div>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between"}}>
+                {moodZones.slice().reverse().map((z,i)=>(
+                  <div key={z.label} style={{fontSize:7,color:eodM.name===z.label?z.color:"#9ca3af",fontWeight:eodM.name===z.label?"bold":"normal",textAlign:"center",flex:1,whiteSpace:"nowrap"}}>
+                    {z.emoji} {z.label}
+                  </div>
+                ))}
+              </div>
+              {lowEnergyPenalty&&<div style={{background:"#fef2f2",border:"2px solid #ef4444",borderRadius:8,padding:"6px 10px",fontSize:10,color:"#dc2626",fontWeight:"bold",animation:"pop 0.4s 0.1s both",display:"flex",alignItems:"center",gap:5,boxShadow:"0 2px 6px rgba(239,68,68,0.18)"}}>
+                <span style={{fontSize:14}}>⚡</span><span>Low energy — mood drops a level tomorrow</span>
+              </div>}
+              {!lowEnergyPenalty&&(()=>{const ratio=givingToday>0?selfToday/givingToday:0;return ratio<0.3&&ordersToday>0;})()&&<div style={{background:"#fff7ed",border:"1.5px solid #fed7aa",borderRadius:7,padding:"4px 8px",fontSize:9,color:"#c2410c",animation:"pop 0.4s 0.12s both"}}>🌿 Not enough self-care — mood will drop a level</div>}
+              {lastH?.moodImproved&&(
+                <div style={{background:"linear-gradient(135deg,#fdf2f8,#ede9fe)",border:"2px solid #f472b6",borderRadius:10,padding:"8px 12px",animation:"pop 0.5s 0.15s both",display:"flex",alignItems:"center",gap:8,boxShadow:"0 3px 10px rgba(244,114,182,0.25)"}}>
+                  <span style={{fontSize:20}}>🎉</span>
+                  <div>
+                    <div style={{fontSize:11,fontWeight:"bold",color:"#9d174d"}}>Mood improved!</div>
+                    <div style={{fontSize:9,color:"#be185d",marginTop:1}}>
+                      {lastH.moodEmoji} {lastH.mood} → {lastH.nextMoodEmoji} {lastH.nextMood}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {!isLastDay&&(
+                <div style={{borderTop:"1px solid #f3f4f6",paddingTop:6}}>
+                  <div style={{fontSize:8,color:"#9ca3af",marginBottom:3}}>
+                    {failedOrders?"Restarting this level with":`Starting Day ${day+1} with`}
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{display:"inline-flex",alignItems:"center",gap:4,background:nextMoodCfg.moodBg,borderRadius:20,padding:"3px 10px",border:`1px solid ${nextMoodCfg.moodColor}33`}}>
+                      <span style={{fontSize:14}}>{nextMoodCfg.moodEmoji}</span>
+                      <span style={{fontSize:12,color:nextMoodCfg.moodColor,fontWeight:"bold"}}>{nextMoodCfg.name}</span>
+                    </span>
+                    <span style={{fontSize:13,fontWeight:"bold",color:startEnergy<TOTAL_POINTS?"#ef4444":"#ec4899"}}>⚡ {startEnergy.toFixed(1)} energy</span>
+                    <span style={{fontSize:14,color:"#9ca3af"}}>→</span>
+                    <Char state={eodW} facing="right" walking={false} walkFrame={0} size={52}/>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Three side-by-side stat boxes */}
+            <div style={{display:"flex",gap:6}}>
+
+              {/* Completed orders */}
+              <div style={{flex:1,background:"white",borderRadius:10,padding:"8px 8px",boxShadow:"0 2px 8px rgba(0,0,0,0.07)",border:`1.5px solid ${failedOrders?"#fca5a5":"rgba(244,114,182,0.2)"}`,display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                <div style={{fontSize:24,fontWeight:"bold",color:failedOrders?"#ef4444":"#ec4899",lineHeight:1}}>{ordersToday}<span style={{fontSize:9,color:"#9ca3af",fontWeight:"normal"}}>/{eodMinOrders}</span></div>
+                <div style={{fontSize:8,color:"#6b7280",textAlign:"center"}}>✅ completed</div>
+                {failedOrders&&<div style={{fontSize:7,color:"#ef4444",background:"#fef2f2",borderRadius:4,padding:"1px 5px",fontWeight:"bold"}}>⚠️ goal not met</div>}
+              </div>
+
+              {/* Incomplete orders */}
+              <div style={{flex:1,background:"white",borderRadius:10,padding:"8px 8px",boxShadow:"0 2px 8px rgba(0,0,0,0.07)",border:"1.5px solid rgba(0,0,0,0.06)",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                <div style={{fontSize:24,fontWeight:"bold",color:lostOrders>0?"#c2410c":"#9ca3af",lineHeight:1}}>{lostOrders}</div>
+                <div style={{fontSize:8,color:"#6b7280",textAlign:"center"}}>😞 incomplete</div>
+              </div>
+
+              {/* Self-care — stacked */}
+              <div style={{flex:1,background:"white",borderRadius:10,padding:"7px 8px",boxShadow:"0 2px 8px rgba(0,0,0,0.07)",border:"1.5px solid rgba(0,0,0,0.06)",display:"flex",flexDirection:"column",gap:3,justifyContent:"center"}}>
+                {[{e:"🫶",l:"Chats",v:friendChats},{e:"🥚",l:"Eggs",v:snacksEaten},{e:"💧",l:"Waters",v:watersToday},{e:"💤",l:"Naps",v:napsToday}].map(r=>(
+                  <div key={r.e} style={{display:"flex",alignItems:"center",gap:4}}>
+                    <span style={{fontSize:11}}>{r.e}</span>
+                    <span style={{fontSize:9,fontWeight:"bold",color:"#374151",minWidth:10}}>{r.v}</span>
+                    <span style={{fontSize:7,color:"#9ca3af"}}>{r.l}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+
+            {/* Buttons — directly below the next-day box */}
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,marginTop:0}}>
+              {(failedOrders&&!retryUsed)||(failedOrders&&retryUsed)?null:null}
+              {failedOrders&&!retryUsed&&(
+                <div style={{textAlign:"center",animation:"pop 0.5s 0.3s both",display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
+                  <div style={{fontSize:10,color:"#6b7280"}}>
+                    Restarting with <span style={{fontWeight:"bold",color:startEnergy<5?"#ef4444":"#ec4899"}}>⚡ {startEnergy.toFixed(1)} energy</span>
+                  </div>
+                  <div style={{display:"flex",gap:6}}>
+                    <button onClick={()=>{setRetryUsed(true);startDay(startEnergy);}} style={{background:"linear-gradient(135deg,#f59e0b,#d97706)",color:"white",border:"none",borderRadius:9,padding:"7px 14px",fontSize:11,fontFamily:"Georgia,serif",cursor:"pointer",fontWeight:"bold"}}>🔄 Try Again</button>
+                    <button onClick={()=>setScreen("gameover")} style={{background:"transparent",border:"1.5px solid #e5e7eb",borderRadius:9,padding:"7px 10px",fontSize:10,fontFamily:"Georgia,serif",cursor:"pointer",color:"#9ca3af"}}>Give up</button>
+                  </div>
+                </div>
+              )}
+              {failedOrders&&retryUsed&&<div style={{fontSize:9,color:"#ef4444",textAlign:"center"}}>No more retries.</div>}
+              {!failedOrders&&!isLastDay&&(
+                <button onClick={()=>{setDay(d=>d+1);setScreen("daybrief");}} style={{background:`linear-gradient(135deg,${eodM.moodColor},#9d174d)`,color:"white",border:"none",borderRadius:10,padding:"8px 22px",fontSize:12,fontFamily:"Georgia,serif",cursor:"pointer",boxShadow:`0 4px 12px ${eodM.moodColor}44`}}>Day {day+1} →</button>
+              )}
+              {!failedOrders&&isLastDay&&(
+                <button onClick={()=>setScreen("win")} style={{background:"linear-gradient(135deg,#ec4899,#9d174d)",color:"white",border:"none",borderRadius:10,padding:"8px 22px",fontSize:12,fontFamily:"Georgia,serif",cursor:"pointer"}}>See Results →</button>
+              )}
+            </div>
+
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if(screen==="win")return(
+    <div style={{...sharedStyle,background:"linear-gradient(135deg,#fdf2f8,#fce7f3,#ede9fe)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",textAlign:"center",position:"relative",overflow:"hidden"}}>
+
+      {/* Left-side customer quotes */}
+      {[
+        {name:"Elise",   color:"#be185d", bg:"#fdf2f8", border:"#fda4af", quote:"you're doing great sav 🥹",                      delay:"0.4s"},
+        {name:"Nathan",  color:"#1d4ed8", bg:"#eff6ff", border:"#93c5fd", quote:"It's giving… you're just better than everyone???", delay:"0.7s"},
+        {name:"Michael", color:"#92400e", bg:"#fffbeb", border:"#fcd34d", quote:"im gonna use these to ask out a cute girl",        delay:"1.1s"},
+      ].map((q,i)=>(
+        <div key={q.name} style={{position:"absolute",left:8,top:90+i*130,maxWidth:170,animation:`quote-left 0.5s ${q.delay} both`}}>
+          <div style={{background:q.bg,border:`1.5px solid ${q.border}`,borderRadius:12,padding:"8px 12px",textAlign:"left",boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+            <div style={{fontSize:9,fontWeight:"bold",color:q.color,marginBottom:4,textTransform:"uppercase",letterSpacing:0.5}}>{q.name}</div>
+            <div style={{fontSize:11,color:"#374151",fontStyle:"italic",lineHeight:1.5}}>"{q.quote}"</div>
+          </div>
+          <div style={{width:0,height:0,borderTop:"7px solid transparent",borderBottom:"7px solid transparent",borderLeft:`7px solid ${q.border}`,position:"absolute",right:-7,top:14}}/>
+        </div>
+      ))}
+
+      {/* Right-side customer quotes */}
+      {[
+        {name:"Ellen", color:"#6d28d9", bg:"#f5f3ff", border:"#c4b5fd", quote:"beautiful bouquet im gonna bite it",  delay:"0.5s"},
+        {name:"Erica", color:"#15803d", bg:"#f0fdf4", border:"#86efac", quote:"my date is gonna love these 💚",      delay:"0.9s"},
+      ].map((q,i)=>(
+        <div key={q.name} style={{position:"absolute",right:8,top:90+i*130,maxWidth:170,animation:`quote-right 0.5s ${q.delay} both`}}>
+          <div style={{background:q.bg,border:`1.5px solid ${q.border}`,borderRadius:12,padding:"8px 12px",textAlign:"right",boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+            <div style={{fontSize:9,fontWeight:"bold",color:q.color,marginBottom:4,textTransform:"uppercase",letterSpacing:0.5}}>{q.name}</div>
+            <div style={{fontSize:11,color:"#374151",fontStyle:"italic",lineHeight:1.5}}>"{q.quote}"</div>
+          </div>
+          <div style={{width:0,height:0,borderTop:"7px solid transparent",borderBottom:"7px solid transparent",borderRight:`7px solid ${q.border}`,position:"absolute",left:-7,top:14}}/>
+        </div>
+      ))}
+      <style>{`
+        @keyframes bi{0%{transform:scale(0.3) rotate(-15deg);opacity:0}70%{transform:scale(1.1) rotate(3deg)}100%{transform:scale(1) rotate(0);opacity:1}}
+        @keyframes loot-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+        @keyframes selfcare-glow{0%,100%{opacity:0}50%{opacity:0}}
+        @keyframes truecrime-pulse{0%,100%{opacity:0}50%{opacity:0}}
+        @keyframes win-jump{0%,100%{transform:translateY(0)}40%{transform:translateY(-22px)}60%{transform:translateY(-10px)}}
+        @keyframes win-sway{0%,100%{transform:rotate(-9deg)}50%{transform:rotate(9deg)}}
+        @keyframes win-pop{0%{transform:scale(0);opacity:0}60%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
+        @keyframes quote-left{0%{opacity:0;transform:translateX(-18px)}100%{opacity:1;transform:translateX(0)}}
+        @keyframes quote-right{0%{opacity:0;transform:translateX(18px)}100%{opacity:1;transform:translateX(0)}}
+      `}</style>
+      {/* Celebration scene */}
+      <div style={{display:"flex",alignItems:"flex-end",justifyContent:"center",gap:14,marginBottom:0}}>
+        <CelebCust name="elise"  photoSrc={CUST_PHOTOS.elise}  bodyColor="#fda4af" armPose="up"    wrapAnim="win-jump"  delay="0s"    dur="0.5s"  size={62}/>
+        {/* Nathan — full image, no circle crop */}
+        <div style={{animation:"win-pop 0.6s 0.1s both",marginBottom:4}}>
+          <div style={{animation:"win-sway 0.55s 0.1s ease-in-out infinite",transformOrigin:"50% 100%",display:"inline-block"}}>
+            <img src={CUST_PHOTOS.nathan} style={{height:90,width:"auto",objectFit:"contain",display:"block"}} alt="nathan"/>
+          </div>
+        </div>
+        <CelebCust name="ellen"  photoSrc={CUST_PHOTOS.ellen}  bodyColor="#c4b5fd" armPose="dance"  wrapAnim="win-sway"  delay="0.08s" dur="0.48s" size={62}/>
+        <CelebCust name="erica"  photoSrc={CUST_PHOTOS.erica}  bodyColor="#86efac" armPose="out"    wrapAnim="win-jump"  delay="0.18s" dur="0.55s" size={62}/>
+        <CelebCust name="michael" photoSrc={CUST_PHOTOS.michael} bodyColor="#fcd34d" armPose="up"   wrapAnim="win-sway"  delay="0.14s" dur="0.52s" size={62}/>
+      </div>
+      {/* Sav avatar — centered, right above title */}
+      <div style={{animation:"bi 1s cubic-bezier(0.34,1.56,0.64,1) forwards",marginBottom:-90,overflow:"visible",marginTop:20}}>
+        <Char state={5} facing="right" walking={false} walkFrame={0} size={80}/>
+      </div>
+      <h1 style={{fontSize:36,color:"#9d174d",margin:"0 0 6px",letterSpacing:-1,position:"relative",zIndex:10}}>Sabannah's thriving. 🌸</h1>
+      <p style={{maxWidth:380,color:"#4b5563",fontSize:15,lineHeight:1.9,fontStyle:"italic"}}>"Five days of running your shop — and you took care of yourself through all of it."</p>
+      {dayHistory.length>0&&(
+        <div style={{marginTop:14,background:"rgba(255,255,255,0.85)",borderRadius:14,padding:"10px 18px",maxWidth:420,textAlign:"left"}}>
+          <div style={{fontSize:9,color:"#9ca3af",letterSpacing:1,textTransform:"uppercase",marginBottom:6}}>Your journey</div>
+          {dayHistory.map(h=>(<div key={h.day} style={{display:"flex",alignItems:"center",gap:6,padding:"2px 0",borderBottom:"1px solid #f3f4f6"}}>
+            <span style={{fontSize:8,color:"#9ca3af",minWidth:32}}>Day {h.day}</span>
+            <span style={{display:"inline-flex",alignItems:"center",gap:2,background:h.moodBg,borderRadius:20,padding:"1px 6px"}}><span style={{fontSize:11}}>{h.moodEmoji}</span><span style={{fontSize:8,color:h.moodColor,fontWeight:"bold"}}>{h.mood}</span></span>
+            {h.nextMoodEmoji&&<><span style={{fontSize:8,color:"#9ca3af"}}>→</span><span style={{display:"inline-flex",alignItems:"center",gap:2,background:h.nextMoodBg,borderRadius:20,padding:"1px 6px"}}><span style={{fontSize:11}}>{h.nextMoodEmoji}</span><span style={{fontSize:8,color:h.nextMoodColor,fontWeight:"bold"}}>{h.nextMood}</span></span></>}
+            <span style={{fontSize:10,color:h.orders>=h.minOrders?"#ec4899":"#ef4444",fontWeight:"bold",marginLeft:"auto"}}>{h.orders} done</span>
+          </div>))}
+        </div>
+      )}
+      <button onClick={()=>{setDay(1);setWb(70);setStreak(0);setBest(0);setDayHistory([]);setStartEnergy(TOTAL_POINTS);setScreen("intro");}} style={{marginTop:18,background:"#ec4899",color:"white",border:"none",borderRadius:12,padding:"12px 32px",fontSize:14,fontFamily:"Georgia,serif",cursor:"pointer"}}>Play again</button>
+    </div>
+  );
+
+  if(screen==="gameover"){
+    const eodMinOrders=LEVELS[Math.min(day,MAX_DAYS)].minOrders;
+    const failedOrders=ordersToday<eodMinOrders;
+    return(
+      <div style={{...sharedStyle,background:"#f1f5f9",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",textAlign:"center"}}>
+        <style>{`@keyframes loot-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}} @keyframes selfcare-glow{0%,100%{opacity:0}50%{opacity:0}} @keyframes truecrime-pulse{0%,100%{opacity:0}50%{opacity:0}}`}</style>
+        <Char state={1} facing="right" walking={false} walkFrame={0} size={80}/>
+        <h1 style={{fontSize:30,color:"#475569",margin:"18px 0 8px"}}>
+          {failedOrders?"The shop fell quiet.":"You have completely wilted."}
+        </h1>
+        <p style={{maxWidth:340,color:"#64748b",fontSize:14,lineHeight:1.8}}>
+          {failedOrders
+            ? `Day ${day} needed ${eodMinOrders} orders — you completed ${ordersToday}. The customers stopped coming.`
+            : "You did not take care of yourself and became burnt out from working. Very bu guai."}
+        </p>
+        {dayHistory.length>0&&(
+          <div style={{marginTop:12,background:"white",borderRadius:12,padding:"8px 16px",maxWidth:340,textAlign:"left"}}>
+            <div style={{fontSize:9,color:"#9ca3af",letterSpacing:1,textTransform:"uppercase",marginBottom:4}}>How far you got</div>
+            {dayHistory.map(h=>(<div key={h.day} style={{display:"flex",alignItems:"center",gap:6,padding:"2px 0",fontSize:10,borderBottom:"1px solid #f3f4f6"}}>
+              <span style={{color:"#9ca3af",minWidth:32,fontSize:8}}>Day {h.day}</span>
+              <span style={{fontSize:11}}>{h.moodEmoji}</span>
+              <span style={{color:h.orders>=h.minOrders?"#ec4899":"#ef4444",fontWeight:"bold"}}>{h.orders} orders</span>
+              <span style={{marginLeft:"auto",fontSize:9}}>{h.orders>=h.minOrders?"✅":"❌"}</span>
+            </div>))}
+          </div>
+        )}
+        <button onClick={()=>{setDay(1);setWb(70);setStreak(0);setBest(0);setDayHistory([]);setStartEnergy(TOTAL_POINTS);setScreen("intro");}} style={{marginTop:20,background:"#64748b",color:"white",border:"none",borderRadius:12,padding:"12px 32px",fontSize:14,fontFamily:"Georgia,serif",cursor:"pointer"}}>Try again</button>
+      </div>
+    );
+  }
+
+  // ── GAME WORLD ─────────────────────────────────────────────────────────────
+  return(
+    <div style={{...sharedStyle,position:"relative",overflow:"hidden",userSelect:"none"}} tabIndex={0} onClick={()=>setShowSettings(false)}>
+      <style>{`
+        @keyframes loot-bob{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-6px) scale(1.1)}}
+        @keyframes speed-pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+        @keyframes selfcare-glow{0%,100%{opacity:0.4}50%{opacity:0.85}}
+        @keyframes truecrime-pulse{0%,100%{opacity:0.35}50%{opacity:0.8}}
+        @keyframes journal-pulse{0%,100%{opacity:0.55;transform:scale(0.88)}50%{opacity:1;transform:scale(1.14)}}
+        @keyframes energy-warn{0%,100%{opacity:1}50%{opacity:0.4}}
+        @keyframes bubble-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes out-of-energy-in{0%{opacity:0;transform:translateX(-50%) translateY(-10px)}100%{opacity:1;transform:translateX(-50%) translateY(0)}}
+        @keyframes celebrate-in{0%{opacity:0;transform:translateX(-50%) scale(0.6)}60%{transform:translateX(-50%) scale(1.08)}100%{opacity:1;transform:translateX(-50%) scale(1)}}
+        @keyframes confetti-pop{0%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-40px) scale(0.5)}}
+        @keyframes delta-float{0%{opacity:1;transform:translateX(-50%) translateY(0)}100%{opacity:0;transform:translateX(-50%) translateY(-32px)}}
+        @keyframes drink-tilt{0%,100%{transform:rotate(0deg)}40%{transform:rotate(-18deg) translateY(-2px)}70%{transform:rotate(5deg)}}
+        @keyframes cust-shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-3px)}40%{transform:translateX(3px)}60%{transform:translateX(-2px)}80%{transform:translateX(2px)}}
+      `}</style>
+
+      <div style={{position:"absolute",inset:0,background:bg,filter:paused?"brightness(0.55) blur(2px)":"none",transition:"filter 0.2s"}}/>
+      <div style={{position:"absolute",left:FLOOR.x,top:FLOOR.y,width:FLOOR.w,height:FLOOR.h,borderRadius:20,background:"rgba(255,245,235,0.58)",border:"2px solid rgba(244,114,182,0.13)",filter:paused?"brightness(0.55)":"none",transition:"filter 0.2s"}}/>
+
+      {/* PAUSE OVERLAY */}
+      {paused&&(
+        <div style={{position:"absolute",inset:0,zIndex:50,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
+          <div style={{background:"rgba(255,255,255,0.97)",borderRadius:20,padding:"28px 48px",boxShadow:"0 8px 40px rgba(0,0,0,0.2)",textAlign:"center",pointerEvents:"all"}}>
+            <div style={{fontSize:28,marginBottom:8}}>⏸</div>
+            <div style={{fontSize:20,fontWeight:"bold",color:"#374151",marginBottom:6}}>Paused</div>
+            <div style={{fontSize:12,color:"#9ca3af",marginBottom:16}}>Press ESC or click Resume to continue</div>
+            <div style={{display:"flex",gap:10,justifyContent:"center"}}>
+              <button onClick={togglePause} style={{background:"#ec4899",color:"white",border:"none",borderRadius:10,padding:"8px 22px",fontSize:13,fontFamily:"Georgia,serif",cursor:"pointer"}}>Resume</button>
+              <button onClick={restartGame} style={{background:"#f1f5f9",color:"#64748b",border:"1.5px solid #e2e8f0",borderRadius:10,padding:"8px 22px",fontSize:13,fontFamily:"Georgia,serif",cursor:"pointer"}}>Restart</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!paused&&<>
+      <svg style={{position:"absolute",inset:0,opacity:0.03}} width={W} height={H}>
+        {[...Array(22)].map((_,i)=><line key={`v${i}`} x1={i*40} y1={0} x2={i*40} y2={H} stroke="#9d174d" strokeWidth="1"/>)}
+        {[...Array(14)].map((_,i)=><line key={`h${i}`} x1={0} y1={i*40} x2={W} y2={i*40} stroke="#9d174d" strokeWidth="1"/>)}
+      </svg>
+
+      {outOfEnergy&&(
+        <div style={{position:"absolute",top:62,left:"50%",transform:"translateX(-50%)",zIndex:30,animation:"out-of-energy-in 0.3s ease-out",pointerEvents:"none"}}>
+          <div style={{background:"rgba(127,29,29,0.95)",color:"white",borderRadius:14,padding:"9px 20px",boxShadow:"0 4px 20px rgba(0,0,0,0.3)",textAlign:"center",backdropFilter:"blur(8px)"}}>
+            <div style={{fontSize:15,fontWeight:"bold",marginBottom:2}}>😵 Out of energy!</div>
+            <div style={{fontSize:10,opacity:0.85}}>Too tired to work. Take a nap 🛏️ to recharge.</div>
+          </div>
+        </div>
+      )}
+
+      {/* ORDER GOAL CELEBRATION */}
+      {orderGoalMet&&(
+        <div style={{position:"absolute",top:64,left:"50%",transform:"translateX(-50%)",zIndex:28,pointerEvents:"none",animation:"celebrate-in 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards"}}>
+          <div style={{background:"linear-gradient(135deg,#ec4899,#7c3aed)",color:"white",borderRadius:20,padding:"10px 28px",boxShadow:"0 6px 28px rgba(236,72,153,0.5)",textAlign:"center",display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:20}}>🎉</span>
+            <div>
+              <div style={{fontSize:15,fontWeight:"bold",letterSpacing:0.5}}>Goal reached!</div>
+              <div style={{fontSize:10,opacity:0.88}}>Keep going — more orders = more cushion</div>
+            </div>
+            <span style={{fontSize:20}}>🌸</span>
+          </div>
+          {/* Confetti dots */}
+          {["#fda4af","#c4b5fd","#fcd34d","#86efac","#fdba74","#a5f3fc"].map((col,i)=>(
+            <div key={i} style={{position:"absolute",top:0,left:`${15+i*14}%`,width:8,height:8,borderRadius:"50%",background:col,animation:`confetti-pop 0.8s ${i*0.08}s ease-out forwards`}}/>
+          ))}
+        </div>
+      )}
+
+      {/* BED */}
+      <div style={{position:"absolute",left:BED.x,top:BED.y,width:BED.w,height:BED.h,zIndex:3}}>
+        <DrawnBed w={BED.w} h={BED.h} sleeping={sleeping} near={nearObj==="bed"} napProgress={napProgress}/>
+        {nearObj==="bed"&&!sleeping&&<div style={{position:"absolute",bottom:-22,left:"50%",transform:"translateX(-50%)",background:"#1e1b4b",color:"white",borderRadius:5,padding:"2px 7px",fontSize:8,fontFamily:"monospace",whiteSpace:"nowrap"}}>SPACE (+{NAP_ENERGY}⚡)</div>}
+      </div>
+
+      {/* COUNTER */}
+      <div style={{position:"absolute",left:COUNTER.x,top:COUNTER.y,width:COUNTER.w,height:COUNTER.h,borderRadius:12,background:nearObj==="counter"?"rgba(255,235,248,0.97)":counterStatus==="preparing"?"rgba(240,253,244,0.95)":"rgba(255,255,255,0.9)",border:nearObj==="counter"?"2.5px solid #f472b6":counterStatus==="preparing"?"2px solid #4ade80":"2px solid rgba(244,114,182,0.4)",boxShadow:nearObj==="counter"?"0 0 0 4px rgba(244,114,182,0.18)":"0 2px 12px rgba(0,0,0,0.08)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",pointerEvents:"none",zIndex:4,padding:"4px 10px"}}>
+        {(()=>{
+          const accepted=customers.find(c=>c.state==="accepted");
+          const waiting=customers.find(c=>c.state==="queued"||c.state==="impatient");
+          const active=accepted||waiting;
+          return(
+            <>
+              <div style={{fontSize:8,fontWeight:"bold",color:"#9d174d",textAlign:"center",lineHeight:1.4,wordBreak:"break-word",whiteSpace:"normal"}}>
+                {active?`${active.customerName} needs flowers for ${active.activity}`:"🏪 waiting for customers"}
+              </div>
+              <div style={{fontSize:8,marginTop:2,textAlign:"center"}}>
+                {counterStatus==="preparing"&&(
+                  <span style={{color:"#15803d",fontWeight:"bold"}}>{orderTimer!==null?`Preparing (${orderTimer}s)`:"Preparing"}</span>
+                )}
+                {counterStatus==="ready"&&(
+                  <span style={{background:"#7c3aed",color:"white",borderRadius:4,padding:"1px 6px",fontWeight:"bold",fontSize:8}}>SPACE to accept</span>
+                )}
+              </div>
+            </>
+          );
+        })()}
+        {orderTimer!==null&&<div style={{position:"absolute",bottom:0,left:0,right:0,height:4,background:"rgba(0,0,0,0.06)",borderRadius:"0 0 12px 12px",overflow:"hidden"}}><div style={{height:"100%",width:`${(orderTimer/ORDER_TIMEOUT)*100}%`,background:orderTimer<=4?"#ef4444":orderTimer<=8?"#f59e0b":"#4ade80",transition:"width 1s linear,background 0.5s"}}/></div>}
+      </div>
+
+      {/* QUEUE */}
+      {queuedCusts.map((c,i)=>(
+        <div key={c.id} style={{position:"absolute",left:QUEUE_START.x+i*QUEUE_STEP,top:QUEUE_START.y,display:"flex",flexDirection:"column",alignItems:"center",gap:3,zIndex:5}}>
+          <CustFig id={c.id} state={c.state} customerColor={c.customerColor} customerName={c.customerName} isAtCounter={c.state==="accepted"} customerType={c.customerType}/>
+          <div style={{background:c.state==="accepted"?"rgba(240,253,244,0.97)":"rgba(255,255,255,0.92)",border:c.state==="accepted"?`2px solid #4ade80`:`1.5px solid ${c.customerColor||"#fda4af"}`,borderRadius:8,padding:"3px 7px",minWidth:40,textAlign:"center",boxShadow:c.state==="accepted"?"0 0 8px rgba(74,222,128,0.4)":"none"}}>
+            {c.state==="accepted"?<div style={{display:"flex",gap:2,fontSize:12}}>{c.colors.map(col=>(<span key={col}>{FLOWERS[col].emoji}</span>))}</div>:<div style={{fontSize:10,color:"#9ca3af"}}>? ?</div>}
+            {c.state==="impatient"&&<div style={{fontSize:7,color:"#ef4444",textAlign:"center",marginTop:1}}>impatient!</div>}
+          </div>
+        </div>
+      ))}
+
+      <svg style={{position:"absolute",inset:0,pointerEvents:"none",zIndex:7}} width={W} height={H}>
+        {movingCusts.map(c=><CustomerWalking key={c.id} c={c}/>)}
+      </svg>
+      {lootItems.map(f=>(<LootItem key={f.id} item={f} isNear={nearObj===`loot_${f.id}`}/>))}
+      {snackItem&&<LootItem item={snackItem} isNear={nearObj==="snack"}/>}
+      {waterItem&&<LootItem item={waterItem} isNear={nearObj==="water"}/>}
+      {trueCrimeItem&&<LootItem item={trueCrimeItem} isNear={nearObj==="truecrime"}/>}
+      {trueCrimeItem2&&<LootItem item={trueCrimeItem2} isNear={false}/>}
+      {journalItem&&<LootItem item={journalItem} isNear={nearObj==="journal"}/>}
+
+      <svg style={{position:"absolute",inset:0,pointerEvents:"none",zIndex:7}} width={W} height={H}>
+        {day!==4&&<FriendFig x={friendPos.x} y={friendPos.y} facing={friendFacing} walking={friendWalking} walkFrame={friendWalkFrame}/>}
+        {day!==4&&nearObj==="friend"&&!friendBubble&&(
+          <g transform={`translate(${friendPos.x+26},${friendPos.y-28})`}>
+            <rect x="0" y="0" width="108" height="20" rx="6" fill="white" stroke="#c084fc" strokeWidth="1.5"/>
+            <polygon points="0,7 -7,12 0,17" fill="white" stroke="#c084fc" strokeWidth="1.5" strokeLinejoin="round"/>
+            <text x="7" y="14" fontSize="8" fill="#7e22ce" fontFamily="Georgia,serif">
+              {friendChats>=4?"SPACE (−½⚡ over limit)":"SPACE (+½ energy, free)"}
+            </text>
+          </g>
+        )}
+        {/* Chat counter — hidden on Day 4 */}
+        {day!==4&&<g transform={`translate(${friendPos.x-8},${friendPos.y-14})`}>
+          {[0,1,2,3].map(i=>(
+            <circle key={i} cx={i*7} cy={0} r="2.8"
+              fill={i<friendChats?(friendChats>4?"#ef4444":"#c084fc"):"#e5e7eb"}
+              stroke="white" strokeWidth="0.8"
+            />
+          ))}
+        </g>}
+      </svg>
+      {friendBubble&&(
+        <div style={{position:"absolute",left:Math.min(W-220,Math.max(10,friendPos.x+30)),top:Math.max(60,friendPos.y-72),background:"white",border:`2px solid ${friendBubble.overchat?"#f59e0b":isLowEnergy?"#3b82f6":"#c084fc"}`,borderRadius:14,padding:"9px 13px",boxShadow:`0 4px 20px ${friendBubble.overchat?"rgba(245,158,11,0.3)":isLowEnergy?"rgba(59,130,246,0.3)":"rgba(192,132,252,0.3)"}`,maxWidth:210,zIndex:25,animation:"bubble-in 0.25s ease-out",pointerEvents:"none"}}>
+          <div style={{position:"absolute",bottom:-10,left:20,width:0,height:0,borderLeft:"8px solid transparent",borderRight:"8px solid transparent",borderTop:`10px solid ${friendBubble.overchat?"#f59e0b":isLowEnergy?"#3b82f6":"#c084fc"}`}}/>
+          <div style={{position:"absolute",bottom:-8,left:21,width:0,height:0,borderLeft:"7px solid transparent",borderRight:"7px solid transparent",borderTop:"9px solid white"}}/>
+          <div style={{fontSize:11,color:friendBubble.overchat?"#92400e":isLowEnergy?"#1d4ed8":"#4c1d95",lineHeight:1.6,fontStyle:"italic"}}>"{friendBubble.msg}"</div>
+          <div style={{fontSize:8,color:friendBubble.overchat?"#f59e0b":isLowEnergy?"#3b82f6":"#c084fc",marginTop:3,textAlign:"right"}}>— your friend 🫶</div>
+        </div>
+      )}
+
+      {/* PLAYER */}
+      <div style={{position:"absolute",left:pos.x,top:pos.y,zIndex:10,filter:nearObj&&!sleeping&&!isEating&&!isDrinking?"drop-shadow(0 0 6px rgba(244,114,182,0.75))":"drop-shadow(0 2px 3px rgba(0,0,0,0.12))"}}>
+        <Char state={wState} facing={facing} walking={walking&&!sleeping&&!isEating&&!isDrinking} walkFrame={walkFrame} size={CHAR_H} sleeping={sleeping}/>
+
+        {/* Bouquet bubble — only when not eating/drinking */}
+        {bouquet.length>0&&!sleeping&&!isEating&&!isDrinking&&(
+          <div style={{position:"absolute",bottom:"108%",left:"50%",transform:"translateX(-50%)",background:"rgba(255,255,255,0.97)",borderRadius:9,padding:"3px 7px",boxShadow:"0 2px 12px rgba(244,114,182,0.25)",border:"1.5px solid rgba(244,114,182,0.4)",display:"flex",gap:3,alignItems:"center",whiteSpace:"nowrap",zIndex:20}}>
+            {bouquet.map(c=><span key={c} style={{fontSize:14}}>{FLOWERS[c].emoji}</span>)}
+            {currentOrder?.colors.filter(c=>!bouquet.includes(c)).map(c=><span key={c} style={{fontSize:14,opacity:0.28}}>{FLOWERS[c].emoji}</span>)}
+          </div>
+        )}
+
+        {/* Eating animation */}
+        {isEating&&!sleeping&&(
+          <div style={{position:"absolute",bottom:"108%",left:"50%",transform:"translateX(-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:2,zIndex:20}}>
+            <span style={{fontSize:22,animation:"eat-bounce 0.5s ease-in-out infinite"}}>🥚</span>
+            <div style={{fontSize:8,color:"#065f46",fontWeight:"bold",background:"rgba(209,250,229,0.95)",borderRadius:6,padding:"1px 6px",whiteSpace:"nowrap"}}>Eating... +2⚡</div>
+          </div>
+        )}
+
+        {/* Drinking animation */}
+        {isDrinking&&!sleeping&&(
+          <div style={{position:"absolute",bottom:"108%",left:"50%",transform:"translateX(-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:2,zIndex:20}}>
+            <span style={{fontSize:22,animation:"drink-tilt 0.6s ease-in-out infinite"}}>💧</span>
+            <div style={{fontSize:8,color:"#1d4ed8",fontWeight:"bold",background:"rgba(219,234,254,0.95)",borderRadius:6,padding:"1px 6px",whiteSpace:"nowrap"}}>Drinking... +1⚡</div>
+          </div>
+        )}
+
+        {/* Status labels below avatar */}
+        {isMoodSlowed&&!sleeping&&!isEating&&!isDrinking&&<div style={{position:"absolute",top:"108%",left:"50%",transform:"translateX(-50%)",fontSize:8,color:"#a16207",fontWeight:"bold",animation:"energy-warn 1s infinite",whiteSpace:"nowrap",background:"rgba(254,249,195,0.95)",borderRadius:5,padding:"2px 6px",border:"1px solid #fde047",zIndex:20}}>😐 Slowing down — need energy!</div>}
+        {isZeroEnergy&&!sleeping&&!isMoodSlowed&&!isEating&&!isDrinking&&<div style={{position:"absolute",top:"108%",left:"50%",transform:"translateX(-50%)",fontSize:8,color:"#7f1d1d",fontWeight:"bold",animation:"energy-warn 0.5s infinite",whiteSpace:"nowrap",background:"rgba(254,226,226,0.95)",borderRadius:5,padding:"2px 6px",border:"1px solid #fca5a5",zIndex:20}}>😵 Exhausted</div>}
+        {isLowEnergy&&!isZeroEnergy&&!sleeping&&!isMoodSlowed&&!isEating&&!isDrinking&&<div style={{position:"absolute",top:"108%",left:"50%",transform:"translateX(-50%)",fontSize:8,color:"#ef4444",fontWeight:"bold",animation:"energy-warn 0.8s infinite",whiteSpace:"nowrap",background:"rgba(254,226,226,0.85)",borderRadius:5,padding:"2px 6px",zIndex:20}}>⚡ Low energy!</div>}
+        {sleeping&&<div style={{position:"absolute",top:-20,left:"50%",transform:"translateX(-50%)",fontSize:9,color:"#60a5fa",fontWeight:"bold",animation:"speed-pulse 0.8s infinite",whiteSpace:"nowrap"}}>💤 Napping...</div>}
+
+        {/* Floating energy deltas — removed */}
+      </div>
+      </>}
+
+      {/* HUD */}
+      <div style={{position:"absolute",top:0,left:0,right:0,height:54,background:"rgba(255,255,255,0.92)",backdropFilter:"blur(10px)",borderBottom:"1px solid rgba(244,114,182,0.2)",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 12px",zIndex:20}}>
+        {/* Mood pill — includes wellbeing % */}
+        <div style={{display:"flex",alignItems:"center",gap:7,background:moodCfg.moodBg,borderRadius:12,padding:"4px 10px",border:`1.5px solid ${moodCfg.moodColor}44`}}>
+          <Char state={wState} facing="right" walking={false} walkFrame={0} size={26}/>
+          <div>
+            <div style={{fontSize:8,color:"#9ca3af"}}>DAY {day}/{MAX_DAYS} · {lvl.label}</div>
+            <div style={{fontSize:12,fontWeight:"bold",color:moodCfg.moodColor,display:"flex",alignItems:"center",gap:4}}>
+              <span>{moodCfg.moodEmoji}</span>
+              <span>{moodCfg.name}</span>
+              <span style={{fontSize:10,fontWeight:"normal",color:moodCfg.moodColor,opacity:0.75}}>· {wellbeing}%</span>
+            </div>
+          </div>
+        </div>
+        {/* Energy — 10 circles */}
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+          <div style={{display:"flex",gap:3,alignItems:"center"}}>
+            {Array.from({length:TOTAL_POINTS},(_,i)=>{
+              const fillFraction=Math.max(0,Math.min(1,points-i));
+              const filled=fillFraction>=1;
+              const partial=fillFraction>0&&fillFraction<1;
+              const isLow=i<LOW_ENERGY_THRESHOLD;
+              const activeColor=isLow?"#ef4444":"#ec4899";
+              const activeBorder=isLow?"#dc2626":"#be185d";
+              const bg=filled?activeColor
+                :partial?`conic-gradient(${activeColor} ${fillFraction*360}deg,rgba(0,0,0,0.08) 0deg)`
+                :"rgba(0,0,0,0.08)";
+              return(
+                <div key={i} style={{
+                  width:13,height:13,borderRadius:"50%",
+                  background:bg,
+                  border:`1.5px solid ${filled||partial?activeBorder:"rgba(0,0,0,0.12)"}`,
+                  transition:"background 0.15s",
+                  boxShadow:filled&&!isLow?"0 0 4px rgba(236,72,153,0.4)":filled&&isLow?"0 0 4px rgba(239,68,68,0.5)":"none",
+                }}/>
+              );
+            })}
+          </div>
+          <div style={{fontSize:8,color:isZeroEnergy?"#7f1d1d":isLowEnergy?"#ef4444":"#9ca3af",animation:isLowEnergy?"energy-warn 0.8s infinite":"none",fontWeight:isLowEnergy?"bold":"normal"}}>
+            {isZeroEnergy?"😵 exhausted":isLowEnergy?"⚡ low energy":`⚡ ${Math.round(points)}/10`}
+          </div>
+        </div>
+        {/* Wellbeing bar */}
+        <div style={{display:"flex",alignItems:"center",gap:4}}>
+          <span style={{fontSize:8,color:"#6b7280"}}>{moodCfg.moodEmoji}</span>
+          <div style={{width:66,height:5,background:"#f3f4f6",borderRadius:99,overflow:"hidden"}}>
+            <div style={{height:"100%",width:`${wellbeing}%`,background:`linear-gradient(90deg,${moodCfg.wbColor},${moodCfg.moodColor})`,borderRadius:99,transition:"width 0.6s"}}/>
+          </div>
+          <span style={{fontSize:9,fontWeight:"bold",color:moodCfg.moodColor,minWidth:26}}>{wellbeing}%</span>
+        </div>
+        {/* Orders + timer + customer count + settings */}
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          {/* Customer forecast */}
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:14,fontWeight:"bold",color:"#c084fc"}}>{customerCount}</div>
+            <div style={{fontSize:7,color:"#9ca3af"}}>in shop</div>
+          </div>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:16,fontWeight:"bold",color:ordersToday>=lvl.minOrders?"#22c55e":"#f59e0b"}}>{ordersToday}<span style={{fontSize:9,color:"#9ca3af",fontWeight:"normal"}}>/{lvl.minOrders}</span></div>
+            <div style={{fontSize:7,color:"#9ca3af"}}>orders</div>
+          </div>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:17,fontWeight:"bold",color:timerColor,fontFamily:"monospace"}}>{timeLeft}</div>
+            <div style={{fontSize:7,color:"#9ca3af"}}>sec</div>
+          </div>
+          {/* Settings dropdown */}
+          <div style={{position:"relative"}} onClick={e=>e.stopPropagation()}>
+            <button onClick={()=>setShowSettings(s=>!s)} style={{background:"rgba(255,255,255,0.8)",border:"1.5px solid #e5e7eb",borderRadius:8,padding:"4px 9px",fontSize:14,cursor:"pointer",lineHeight:1}}>⚙️</button>
+            {showSettings&&(
+              <div style={{position:"absolute",right:0,top:"calc(100% + 6px)",background:"white",borderRadius:12,boxShadow:"0 4px 20px rgba(0,0,0,0.15)",border:"1px solid #e5e7eb",zIndex:40,overflow:"hidden",minWidth:130}}>
+                <button onClick={togglePause} style={{display:"block",width:"100%",padding:"10px 16px",textAlign:"left",background:"transparent",border:"none",cursor:"pointer",fontSize:12,color:"#374151",fontFamily:"Georgia,serif",borderBottom:"1px solid #f3f4f6"}}>
+                  {paused?"▶ Resume":"⏸ Pause"}
+                </button>
+                <button onClick={restartGame} style={{display:"block",width:"100%",padding:"10px 16px",textAlign:"left",background:"transparent",border:"none",cursor:"pointer",fontSize:12,color:"#ef4444",fontFamily:"Georgia,serif"}}>
+                  🔄 Restart game
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* BED BUTTON */}
+      {!paused&&<button onClick={()=>{if(nearObj==="bed"&&!sleeping)startNap();}} style={{position:"absolute",left:BED.x,top:BED.y+BED.h+4,zIndex:20,background:sleeping?"#dbeafe":nearObj==="bed"?"#eff6ff":"rgba(255,255,255,0.75)",border:sleeping?"2px solid #3b82f6":nearObj==="bed"?"2px solid #3b82f6":"2px solid rgba(147,197,253,0.5)",borderRadius:10,padding:"5px 10px",display:"flex",alignItems:"center",gap:5,fontSize:10,color:sleeping||nearObj==="bed"?"#1d4ed8":"#64748b",fontFamily:"Georgia,serif",cursor:nearObj==="bed"&&!sleeping?"pointer":"default",transition:"all 0.15s",backdropFilter:"blur(4px)"}}>
+        <span style={{fontSize:13}}>🛏️</span>
+        <span style={{fontWeight:"bold"}}>{sleeping?`Zzz (${Math.round(napProgress)}%)`:`Nap (+${NAP_ENERGY}⚡)`}</span>
+      </button>}
+
+      {/* Controls */}
+      {!paused&&<div style={{position:"absolute",bottom:12,right:12,display:"flex",gap:4,zIndex:15}}>
+        {[["↑↓←→","move"],["SPACE","interact"],["ESC","pause"]].map(([k,l])=>(<div key={k} style={{background:"rgba(255,255,255,0.68)",backdropFilter:"blur(4px)",borderRadius:5,padding:"2px 7px",fontSize:7,color:"#6b7280",border:"1px solid rgba(0,0,0,0.06)",fontFamily:"monospace"}}><strong>{k}</strong> {l}</div>))}
+      </div>}
+    </div>
+  );
+}
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<BloomGame />);
+</script>
+</body>
+</html>
