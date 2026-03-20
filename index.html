@@ -25,7 +25,7 @@ const FRIEND_ENERGY_GAIN = 0.5;    // +0.5
 const SNACK_ENERGY = 2;            // +2
 const WATER_ENERGY = 1;            // +1
 const JOURNAL_ENERGY = 5;          // +5 (wilting rescue item)
-const JOURNAL_VISIBLE_MS = 7000;   // 7 seconds on floor
+const JOURNAL_VISIBLE_MS = 15000;  // 15 seconds on floor
 const EAT_DRINK_PAUSE = 2000;
 const LOW_ENERGY_THRESHOLD = 5;
 const ACCEPT_COST = 0.5;           // −0.5
@@ -60,7 +60,7 @@ const LEVELS = {
   4: { minOrders:7,  threeFlowerRate:0.65, patience:16, spawnGap:[1800,3000],  label:"Peak Season",
        briefMsg:"The shop is picking up & customers want bigger bouquets? BTW, your friend is sick today, so make sure to avoid them." },
   5: { minOrders:7,  threeFlowerRate:0.75, patience:18, spawnGap:[2000,3500],  label:"Full Bloom",
-       briefMsg:"Final Day. You've been good at finding balance. You got this!!" },
+       briefMsg:"Final Day! FYI - Your friend is healthy. Pace yourself, stay fuelled, and finish strong." },
 };
 
 const FLOOR   = { x:110, y:100, w:680, h:380 };
@@ -1096,6 +1096,8 @@ function BloomGame() {
       clearTimeout(journalTimerRef.current);
       pointsRef.current=Math.min(TOTAL_POINTS,pointsRef.current+JOURNAL_ENERGY);
       setPoints(pointsRef.current);showDelta(+JOURNAL_ENERGY);setSelfToday(s=>s+1);
+      // Speed boost if wilted (state 1 or 2)
+      if(getWbState(wellbeingRef.current)<=2){speedModRef.current=Math.min(1.6,speedModRef.current+0.4);setSpeedMod(speedModRef.current);}
       return;
     }
     if(obj==="truecrime"){return;}

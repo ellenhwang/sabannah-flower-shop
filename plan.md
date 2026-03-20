@@ -93,8 +93,7 @@ Day 3: \"Working is exhausting. You might be more drawn to True Crime, but RESIS
 
 Day 4: \"The shop is picking up & customers want bigger bouquets? BTW, your friend is sick today, so make sure to avoid them.\"
 
-Day 5: \"Final Day, but you've been finding better balance. Pace yourself, stay
-fuelled, and finish strong.\"
+Day 5: \"Final Day! FYI - Your friend is healthy. Pace yourself, stay fuelled, and finish strong.\"
 
 **Energy System**
 
@@ -311,11 +310,12 @@ nathan, ellen, ellen, erica, erica, michael, michael, nathan.
   (trap)                              contact      SPACE needed --- just walking into it
                                                    costs energy
 
-  Journal    📓          +5 energy    SPACE to     Only appears if player enters day in
-  (rescue)                            collect      wilting mood (state 2), Days 3+ only.
-                                                   Spawns once in lower-right of floor at
-                                                   a random time within the first 30s.
-                                                   Lingers 7s then disappears.
+  Journal    📓          +5 energy    SPACE to     Only appears on Days 3+ if energy <5.
+  (rescue)               + speed      collect      Spawns once in lower-right of floor at
+             boost if                              a random time within the first 15s.
+             wilted                                Lingers 15s then disappears. If player
+                                                   is wilted (state 1--2), also grants a
+                                                   speed boost (+0.4 speedMod).
   ---------------------------------------------------------------------------------------
 
 Self-care items glow teal/green and have a 56px container. True crime
