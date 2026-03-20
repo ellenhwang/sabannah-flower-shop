@@ -1527,11 +1527,11 @@ function BloomGame() {
         <style>{`@keyframes loot-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}} @keyframes selfcare-glow{0%,100%{opacity:0}50%{opacity:0}} @keyframes truecrime-pulse{0%,100%{opacity:0}50%{opacity:0}}`}</style>
         <Char state={1} facing="right" walking={false} walkFrame={0} size={80}/>
         <h1 style={{fontSize:30,color:"#475569",margin:"18px 0 8px"}}>
-          {failedOrders?"The shop fell quiet.":"You have completely wilted."}
+          {failedOrders?"ACID REFLUX":"You have completely wilted."}
         </h1>
         <p style={{maxWidth:340,color:"#64748b",fontSize:14,lineHeight:1.8}}>
           {failedOrders
-            ? `Day ${day} needed ${eodMinOrders} orders — you completed ${ordersToday}. The customers stopped coming.`
+            ? "Failed your orders cause u didn't take care of yourself"
             : "You did not take care of yourself and became burnt out from working. Very bu guai."}
         </p>
         {dayHistory.length>0&&(
