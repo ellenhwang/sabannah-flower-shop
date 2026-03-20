@@ -57,7 +57,7 @@ const LEVELS = {
        briefMsg:"Damn, that shit was kinda stressful. Just complete 6 orders this round." },
   3: { minOrders:6,  threeFlowerRate:0.50, patience:16, spawnGap:[2000,3500],  label:"Tough Day",
        briefMsg:"Working is exhausting. You might be more drawn to True Crime, but RESIST!" },
-  4: { minOrders:7,  threeFlowerRate:0.65, patience:16, spawnGap:[1800,3000],  label:"Peak Season",
+  4: { minOrders:7,  threeFlowerRate:0.75, maxFlowers:3, patience:16, spawnGap:[1800,3000],  label:"Peak Season",
        briefMsg:"The shop is picking up & customers want bigger bouquets? BTW, your friend is sick today, so make sure to avoid them." },
   5: { minOrders:7,  threeFlowerRate:0.75, patience:18, spawnGap:[2000,3500],  label:"Full Bloom",
        briefMsg:"Final Day! FYI - Your friend is healthy. Pace yourself, stay fuelled, and finish strong." },
@@ -484,10 +484,10 @@ const ACTIVITY_POOL = [
   "a date", "mom", "a birthday present", "romance", "my friend", "themselves", "an important work thing",
 ];
 
-function makeCustomer(id, qIdx, threeFlowerRate=0, excludeType=null) {
+function makeCustomer(id, qIdx, threeFlowerRate=0, excludeType=null, maxFlowers=4) {
   const roll = Math.random();
   let n;
-  if(roll < threeFlowerRate * 0.25) n = 4;
+  if(maxFlowers >= 4 && roll < threeFlowerRate * 0.25) n = 4;
   else if(roll < threeFlowerRate) n = 3;
   else n = 2;
   const colors=[...FKEYS].sort(()=>Math.random()-0.5).slice(0,n);
@@ -755,7 +755,7 @@ function BloomGame() {
     const fp=randFloor(80);friendPosRef.current=fp;friendTargRef.current=fp;
 
     customerIdRef.current=1;
-    const fc=makeCustomer(1,0,lvlCfg.threeFlowerRate,FRIEND_TYPE_BY_DAY[Math.min(day,5)-1]);
+    const fc=makeCustomer(1,0,lvlCfg.threeFlowerRate,FRIEND_TYPE_BY_DAY[Math.min(day,5)-1],lvlCfg.maxFlowers||4);
     fc.x=QUEUE_START.x; fc.y=QUEUE_START.y; fc.state="queued";
     fc.patience=fc.customerType==="elise"?9999:lvlCfg.patience;
 
@@ -899,7 +899,7 @@ function BloomGame() {
           customerIdRef.current++;
           const id=customerIdRef.current;
           const qIdx=customersRef.current.filter(c=>c.state==="queued"||c.state==="impatient").length;
-          const c=makeCustomer(id,qIdx,lvlCfg.threeFlowerRate,FRIEND_TYPE_BY_DAY[Math.min(day,5)-1]);
+          const c=makeCustomer(id,qIdx,lvlCfg.threeFlowerRate,FRIEND_TYPE_BY_DAY[Math.min(day,5)-1],lvlCfg.maxFlowers||4);
           c.patience=c.customerType==="elise"?9999:lvlCfg.patience;
           setCustomers(prev=>[...prev,c]);
         }
