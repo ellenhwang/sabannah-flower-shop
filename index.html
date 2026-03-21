@@ -760,7 +760,7 @@ function BloomGame() {
         const gap=gMin+Math.random()*(gMax-gMin);
         trueCrimeTimerRef.current=setTimeout(scheduleTrueCrime,gap);
       },TRUE_CRIME_DURATION);
-    },500);
+    },250);
   },[day]);
 
   const scheduleTrueCrime2=useCallback(()=>{
@@ -776,7 +776,7 @@ function BloomGame() {
         const gap=1200+Math.random()*1200;
         trueCrimeTimerRef2.current=setTimeout(scheduleTrueCrime2,gap);
       },TRUE_CRIME_DURATION);
-    },500);
+    },250);
   },[]);
 
   const spawnLootFlower=useCallback(()=>{
