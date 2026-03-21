@@ -209,27 +209,27 @@ function Char({ state, facing, walking, walkFrame=0, size=36, sleeping=false }) 
             {state===1?(
               <>
                 <defs><clipPath id="sav-acid-clip"><circle cx="0" cy="0" r="16"/></clipPath></defs>
-                <image href="photos/sav_acidreflux.png" x="-16" y="-16" width="32" height="32" clipPath="url(#sav-acid-clip)" preserveAspectRatio="xMidYMid slice"/>
+                <image href=".photos/sav_acidreflux.png" x="-16" y="-16" width="32" height="32" clipPath="url(#sav-acid-clip)" preserveAspectRatio="xMidYMid slice"/>
               </>
             ):state===2?(
               <>
                 <defs><clipPath id="sav-wilt-clip"><circle cx="0" cy="0" r="16"/></clipPath></defs>
-                <image href="photos/sav_wilting.png" x="-16" y="-16" width="32" height="32" clipPath="url(#sav-wilt-clip)" preserveAspectRatio="xMidYMid slice"/>
+                <image href=".photos/sav_wilting.png" x="-16" y="-16" width="32" height="32" clipPath="url(#sav-wilt-clip)" preserveAspectRatio="xMidYMid slice"/>
               </>
             ):state===3?(
               <>
                 <defs><clipPath id="sav-meh-clip"><circle cx="0" cy="0" r="16"/></clipPath></defs>
-                <image href="photos/sav_meh.png" x="-16" y="-16" width="32" height="32" clipPath="url(#sav-meh-clip)" preserveAspectRatio="xMidYMid slice"/>
+                <image href=".photos/sav_meh.png" x="-16" y="-16" width="32" height="32" clipPath="url(#sav-meh-clip)" preserveAspectRatio="xMidYMid slice"/>
               </>
             ):state===4?(
               <>
                 <defs><clipPath id="sav-fine-clip"><circle cx="0" cy="0" r="16"/></clipPath></defs>
-                <image href="photos/sav_fine.png" x="-16" y="-16" width="32" height="32" clipPath="url(#sav-fine-clip)" preserveAspectRatio="xMidYMid slice"/>
+                <image href=".photos/sav_fine.png" x="-16" y="-16" width="32" height="32" clipPath="url(#sav-fine-clip)" preserveAspectRatio="xMidYMid slice"/>
               </>
             ):(
               <>
                 <defs><clipPath id="sav-wee-clip"><circle cx="0" cy="0" r="16"/></clipPath></defs>
-                <image href="photos/sav_wee.png" x="-16" y="-16" width="32" height="32" clipPath="url(#sav-wee-clip)" preserveAspectRatio="xMidYMid slice"/>
+                <image href=".photos/sav_wee.png" x="-16" y="-16" width="32" height="32" clipPath="url(#sav-wee-clip)" preserveAspectRatio="xMidYMid slice"/>
               </>
             )}
           </g>
@@ -261,15 +261,15 @@ function DrawnBed({ w, h, sleeping, near, napProgress }) {
 
 // ── FRIEND ─────────────────────────────────────────────────────────────────────
 const FRIEND_PHOTOS_BY_DAY = [
-  "photos/ellen.png",   // Day 1
-  "photos/michael.png", // Day 2
-  "photos/nathan.jpeg", // Day 3
-  "photos/erica.png",   // Day 4 (sick)
-  "photos/elise.png",   // Day 5
+  ".photos/ellen.png",   // Day 1
+  ".photos/michael.png", // Day 2
+  ".photos/nathan.jpeg", // Day 3
+  ".photos/erica.png",   // Day 4 (sick)
+  ".photos/elise.png",   // Day 5
 ];
 // Customer type key to exclude (they're the friend that day)
 const FRIEND_TYPE_BY_DAY = ["ellen","michael","nathan","erica","elise"];
-const ALL_FRIEND_PHOTOS = ["photos/ellen.png","photos/michael.png","photos/nathan.jpeg","photos/erica.png","photos/elise.png"];
+const ALL_FRIEND_PHOTOS = [".photos/ellen.png",".photos/michael.png",".photos/nathan.jpeg",".photos/erica.png",".photos/elise.png"];
 
 function CyclingFriendIcon() {
   const [idx,setIdx] = useState(0);
@@ -389,8 +389,8 @@ function CustomerWalking({ c }) {
 }
 
 const CUST_PHOTOS = {
-  nathan:"photos/nathan.jpeg", ellen:"photos/ellen.png",
-  elise:"photos/elise.png",   erica:"photos/erica.png", michael:"photos/michael.png",
+  nathan:".photos/nathan.jpeg", ellen:".photos/ellen.png",
+  elise:".photos/elise.png",   erica:".photos/erica.png", michael:".photos/michael.png",
 };
 
 function CustFig({ id, state, customerColor, customerName, isAtCounter, customerType }) {
