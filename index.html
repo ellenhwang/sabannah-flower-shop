@@ -596,6 +596,8 @@ function BloomGame() {
   const [waterItem,setWaterItem]       = useState(null);
   const [trueCrimeItem,setTrueCrimeItem] = useState(null);
   const [trueCrimeItem2,setTrueCrimeItem2] = useState(null);
+  const [tcWarn1,setTcWarn1] = useState(null);
+  const [tcWarn2,setTcWarn2] = useState(null);
   const [journalItem,setJournalItem] = useState(null);
 
   const [friendPos,setFriendPos]           = useState({x:380,y:240});
@@ -728,7 +730,7 @@ function BloomGame() {
 
   // Journal rescue item — only if entering day while wilting (state 2) on days 3+
   const scheduleJournal=useCallback(()=>{
-    if(day<2||getWbState(wellbeingRef.current)>2||journalCountRef.current>=2)return; // only days 2+ when wilting, max 2 times
+    if(getWbState(wellbeingRef.current)>2||journalCountRef.current>=2)return; // only when wilting, max 2 times
     const delay=8000+Math.random()*10000; // 8–18s between spawns
     journalTimerRef.current=setTimeout(()=>{
       if(journalRef.current||journalCountRef.current>=2)return; // already on floor or cap reached
@@ -747,26 +749,34 @@ function BloomGame() {
   const scheduleTrueCrime=useCallback(()=>{
     clearTimeout(trueCrimeTimerRef.current);
     const p=randSafeFloor(50,[],posRef.current,1.0);
-    const item={id:Date.now(),type:"truecrime",emoji:"🕵🏻‍♀️🔍",x:p.x,y:p.y,born:Date.now(),lifetime:TRUE_CRIME_DURATION};
-    trueCrimeRef.current=item;setTrueCrimeItem(item);
+    setTcWarn1({x:p.x,y:p.y});
     trueCrimeTimerRef.current=setTimeout(()=>{
-      trueCrimeRef.current=null;setTrueCrimeItem(null);
-      const [gMin,gMax]=day===3?[800,2000]:[TRUE_CRIME_GAP_MIN,TRUE_CRIME_GAP_MAX];
-      const gap=gMin+Math.random()*(gMax-gMin);
-      trueCrimeTimerRef.current=setTimeout(scheduleTrueCrime,gap);
-    },TRUE_CRIME_DURATION);
+      setTcWarn1(null);
+      const item={id:Date.now(),type:"truecrime",emoji:"🕵🏻‍♀️🔍",x:p.x,y:p.y,born:Date.now(),lifetime:TRUE_CRIME_DURATION};
+      trueCrimeRef.current=item;setTrueCrimeItem(item);
+      trueCrimeTimerRef.current=setTimeout(()=>{
+        trueCrimeRef.current=null;setTrueCrimeItem(null);
+        const [gMin,gMax]=day===3?[800,2000]:[TRUE_CRIME_GAP_MIN,TRUE_CRIME_GAP_MAX];
+        const gap=gMin+Math.random()*(gMax-gMin);
+        trueCrimeTimerRef.current=setTimeout(scheduleTrueCrime,gap);
+      },TRUE_CRIME_DURATION);
+    },500);
   },[day]);
 
   const scheduleTrueCrime2=useCallback(()=>{
     clearTimeout(trueCrimeTimerRef2.current);
     const p=randSafeFloor(50,[],posRef.current,1.0);
-    const item={id:Date.now()+1,type:"truecrime",emoji:"🕵🏻‍♀️🔍",x:p.x,y:p.y,born:Date.now(),lifetime:TRUE_CRIME_DURATION};
-    trueCrimeRef2.current=item;setTrueCrimeItem2(item);
+    setTcWarn2({x:p.x,y:p.y});
     trueCrimeTimerRef2.current=setTimeout(()=>{
-      trueCrimeRef2.current=null;setTrueCrimeItem2(null);
-      const gap=1200+Math.random()*1200;
-      trueCrimeTimerRef2.current=setTimeout(scheduleTrueCrime2,gap);
-    },TRUE_CRIME_DURATION);
+      setTcWarn2(null);
+      const item={id:Date.now()+1,type:"truecrime",emoji:"🕵🏻‍♀️🔍",x:p.x,y:p.y,born:Date.now(),lifetime:TRUE_CRIME_DURATION};
+      trueCrimeRef2.current=item;setTrueCrimeItem2(item);
+      trueCrimeTimerRef2.current=setTimeout(()=>{
+        trueCrimeRef2.current=null;setTrueCrimeItem2(null);
+        const gap=1200+Math.random()*1200;
+        trueCrimeTimerRef2.current=setTimeout(scheduleTrueCrime2,gap);
+      },TRUE_CRIME_DURATION);
+    },500);
   },[]);
 
   const spawnLootFlower=useCallback(()=>{
@@ -807,7 +817,7 @@ function BloomGame() {
     setOrdersToday(0);setLostOrders(0);setOrderGoalMet(false);setCustomerFeedback([]);setSelfToday(0);setGivingToday(0);
     setFriendChats(0);setSnacksEaten(0);setWatersToday(0);setNapsToday(0);setTrueCrimeToday(0);setJournalToday(0);
     setTimeLeft(60);setWalkFrame(0);setSpeedMod(1);
-    setLootItems([]);setSnackItem(null);setWaterItem(null);setTrueCrimeItem(null);setTrueCrimeItem2(null);setJournalItem(null);
+    setLootItems([]);setSnackItem(null);setWaterItem(null);setTrueCrimeItem(null);setTrueCrimeItem2(null);setTcWarn1(null);setTcWarn2(null);setJournalItem(null);
     setFriendPos(fp);setSleeping(false);setNapProgress(0);setFriendBubble(null);setNearObj(null);
     setPaused(false);setShowSettings(false);setRetryUsed(false);
     setIsEating(false);setIsDrinking(false);isEatingRef.current=false;isDrinkingRef.current=false;
@@ -1200,9 +1210,10 @@ function BloomGame() {
       {/* Info card */}
       <div style={{background:"rgba(255,255,255,0.88)",backdropFilter:"blur(8px)",borderRadius:16,padding:"10px 18px",width:"100%",maxWidth:520,marginBottom:8,animation:"fade-up 0.4s 0.2s both",boxShadow:"0 4px 20px rgba(244,114,182,0.12)",border:"1px solid rgba(244,114,182,0.18)"}}>
         <p style={{margin:"0 0 7px",color:"#374151",fontSize:11,lineHeight:1.7}}>
-          You have <strong>5 days</strong> to keep your flower shop thriving. Each day is <strong>1 minute</strong>. A customer is already waiting!<br/>
-          <strong>Collect flowers to complete orders 🌹💜🌻.</strong> Speed scales with energy — stay fuelled.<br/>
-          Avoid <strong>🕵🏻‍♀️🔍 true crime</strong> — walking into it costs −3⚡!
+          You have <strong>5 days</strong> to keep your flower shop thriving. Each day is a minute.<br/><br/>
+          Keep up with orders, but don't forget to take care of yourself. Energy powers your speed — let it drop below <strong>5⚡</strong> and you'll slow to a crawl.<br/><br/>
+          Self-care isn't optional, it's how you survive. <strong>Eat, drink, nap, chat.</strong><br/><br/>
+          And stay away from <strong>🕵🏻‍♀️🔍 true crime</strong> — walking into it costs <strong>−3⚡ instantly.</strong>
         </p>
         {/* SPACE usage — 2 columns */}
         <div style={{borderTop:"1px solid #f3f4f6",paddingTop:7}}>
@@ -1746,6 +1757,8 @@ function BloomGame() {
       {lootItems.map(f=>(<LootItem key={f.id} item={f} isNear={nearObj===`loot_${f.id}`}/>))}
       {snackItem&&<LootItem item={snackItem} isNear={nearObj==="snack"}/>}
       {waterItem&&<LootItem item={waterItem} isNear={nearObj==="water"}/>}
+      {tcWarn1&&<div style={{position:"absolute",left:tcWarn1.x-22,top:tcWarn1.y-22,width:44,height:44,borderRadius:"50%",background:"rgba(239,68,68,0.18)",border:"2px solid rgba(239,68,68,0.45)",pointerEvents:"none",zIndex:5,animation:"truecrime-pulse 0.4s ease-in-out infinite"}}/>}
+      {tcWarn2&&<div style={{position:"absolute",left:tcWarn2.x-22,top:tcWarn2.y-22,width:44,height:44,borderRadius:"50%",background:"rgba(239,68,68,0.18)",border:"2px solid rgba(239,68,68,0.45)",pointerEvents:"none",zIndex:5,animation:"truecrime-pulse 0.4s ease-in-out infinite"}}/>}
       {trueCrimeItem&&<LootItem item={trueCrimeItem} isNear={nearObj==="truecrime"}/>}
       {trueCrimeItem2&&<LootItem item={trueCrimeItem2} isNear={false}/>}
       {journalItem&&<LootItem item={journalItem} isNear={nearObj==="journal"}/>}
@@ -1846,7 +1859,7 @@ function BloomGame() {
                 :"rgba(0,0,0,0.08)";
               return(
                 <div key={i} style={{
-                  width:13,height:13,borderRadius:"50%",
+                  width:17,height:17,borderRadius:"50%",
                   background:bg,
                   border:`1.5px solid ${filled||partial?activeBorder:"rgba(0,0,0,0.12)"}`,
                   transition:"background 0.15s",
@@ -1855,32 +1868,19 @@ function BloomGame() {
               );
             })}
           </div>
-          <div style={{fontSize:8,color:isZeroEnergy?"#7f1d1d":isLowEnergy?"#ef4444":"#9ca3af",animation:isLowEnergy?"energy-warn 0.8s infinite":"none",fontWeight:isLowEnergy?"bold":"normal"}}>
+          <div style={{fontSize:10,color:isZeroEnergy?"#7f1d1d":isLowEnergy?"#ef4444":"#374151",animation:isLowEnergy?"energy-warn 0.8s infinite":"none",fontWeight:"bold"}}>
             {isZeroEnergy?"😵 exhausted":isLowEnergy?"⚡ low energy":`⚡ ${Math.round(points)}/10`}
           </div>
         </div>
-        {/* Wellbeing bar */}
-        <div style={{display:"flex",alignItems:"center",gap:4}}>
-          <span style={{fontSize:8,color:"#6b7280"}}>{moodCfg.moodEmoji}</span>
-          <div style={{width:66,height:5,background:"#f3f4f6",borderRadius:99,overflow:"hidden"}}>
-            <div style={{height:"100%",width:`${wellbeing}%`,background:`linear-gradient(90deg,${moodCfg.wbColor},${moodCfg.moodColor})`,borderRadius:99,transition:"width 0.6s"}}/>
-          </div>
-          <span style={{fontSize:9,fontWeight:"bold",color:moodCfg.moodColor,minWidth:26}}>{wellbeing}%</span>
-        </div>
-        {/* Orders + timer + customer count + settings */}
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          {/* Customer forecast */}
+        {/* Orders + timer + settings */}
+        <div style={{display:"flex",alignItems:"center",gap:14}}>
           <div style={{textAlign:"center"}}>
-            <div style={{fontSize:14,fontWeight:"bold",color:"#c084fc"}}>{customerCount}</div>
-            <div style={{fontSize:7,color:"#9ca3af"}}>in shop</div>
+            <div style={{fontSize:20,fontWeight:"bold",color:ordersToday>=lvl.minOrders?"#22c55e":"#f59e0b",lineHeight:1}}>{ordersToday}<span style={{fontSize:13,color:"#9ca3af",fontWeight:"normal"}}>/{lvl.minOrders}</span></div>
+            <div style={{fontSize:8,color:"#9ca3af"}}>orders</div>
           </div>
           <div style={{textAlign:"center"}}>
-            <div style={{fontSize:16,fontWeight:"bold",color:ordersToday>=lvl.minOrders?"#22c55e":"#f59e0b"}}>{ordersToday}<span style={{fontSize:9,color:"#9ca3af",fontWeight:"normal"}}>/{lvl.minOrders}</span></div>
-            <div style={{fontSize:7,color:"#9ca3af"}}>orders</div>
-          </div>
-          <div style={{textAlign:"center"}}>
-            <div style={{fontSize:17,fontWeight:"bold",color:timerColor,fontFamily:"monospace"}}>{timeLeft}</div>
-            <div style={{fontSize:7,color:"#9ca3af"}}>sec</div>
+            <div style={{fontSize:20,fontWeight:"bold",color:timerColor,fontFamily:"monospace",lineHeight:1}}>{timeLeft}s</div>
+            <div style={{fontSize:8,color:"#9ca3af"}}>time</div>
           </div>
           {/* Settings dropdown */}
           <div style={{position:"relative"}} onClick={e=>e.stopPropagation()}>
