@@ -58,8 +58,8 @@ is wilted (state ≤ 2), all customers receive +6 bonus patience ticks.
   4         Peak Season 7          50% 3-fl,    22s            1.8--3s   Normal (friend sick)
                                    50% 2-fl
 
-  5         Full Bloom  6          75%          24s            2--3.5s   Generous (egg 2s /
-                                                                         water 0.6s)
+  5         Full Bloom  6          75% 3-fl,    24s            2--3.5s   Generous (egg 2s /
+                                   25% 2-fl                              water 0.6s)
   -------------------------------------------------------------------------------------------
 
 **Day-by-Day Difficulty Breakdown**
@@ -81,9 +81,9 @@ is wilted (state ≤ 2), all customers receive +6 bonus patience ticks.
                                         50% 2-flower                                                    (2s cooldown). Friend moves at 75% normal speed (25%
                                         (no 4-flower)                                                   slower) with a red glow. Avoid them.
 
-  5         Full Bloom      6 orders    75% 3-flower,              2--3.5s         Generous             Reduced quota. Complex orders, but loot is abundant
-                                        ~25% 4-flower                                                   (egg every 2s, water every 0.6s). A reward for players
-                                                                                                        who learned to self-care. Arrives depleted = very hard.
+  5         Full Bloom      6 orders    75% 3-flower,              2--3.5s         Generous             Reduced quota. Loot is abundant (egg every 2s, water
+                                        25% 2-flower                                                    every 0.6s). A reward for players who learned to
+                                        (no 4-flower)                                                   self-care. Arrives depleted = very hard.
   ---------------------------------------------------------------------------------------------------------------------------------------------------------
 
 **Day Brief Messages**
@@ -101,7 +101,7 @@ Day 5: \"Final Day! FYI - Your friend is healthy. Pace yourself, stay fuelled, a
 **Energy System**
 
 The player has 10 energy points displayed as 10 circles in the HUD. Pink
-circles = healthy. Red circles = below 5 (low energy). Empty rings =
+circles = healthy. Red circles = below 4 (low energy). Empty rings =
 depleted. Every work action costs energy. Self-care restores it.
 
   -----------------------------------------------------------------------
@@ -155,7 +155,7 @@ speed = BASE_SPEED × mood_modifier × boost × energy_fraction
 
 -   Zero energy → 35% of maximum speed
 
--   Additional 0.65× penalty when mood is meh or below AND energy \< 5
+-   Additional 0.55× penalty when energy \< 4 (regardless of mood)
 
 The player feels self-care immediately --- eating or napping makes them
 visibly faster.
@@ -235,15 +235,17 @@ Flower spawn rate: every 600–1000ms (0.6–1 second). Only flowers needed
 for the current active order are spawned, and only while an order is
 accepted. Each flower lives 3.2–4 seconds before disappearing.
 
--   4-flower orders: Day 5 = 10% only
+-   No 4-flower orders on any day.
 
--   Day 2: 30% 3-flower, 70% 2-flower (no 4-flower)
+-   Day 1: all 2-flower (intentional grind trap)
 
--   Day 3: 20% 3-flower, 80% 2-flower (no 4-flower)
+-   Day 2: 30% 3-flower, 70% 2-flower
 
--   Day 4: 50% 3-flower, 50% 2-flower (no 4-flower)
+-   Day 3: 20% 3-flower, 80% 2-flower
 
--   Day 1: all 2-flower orders (no complexity, intentional grind trap)
+-   Day 4: 50% 3-flower, 50% 2-flower
+
+-   Day 5: 75% 3-flower, 25% 2-flower
 
 **Customers**
 
@@ -320,10 +322,12 @@ nathan, ellen, ellen, erica, erica, michael, michael, nathan.
 
   True Crime 🕵🏻‍♀️          −3 energy    Auto on      Appears every 1.5--4s, lingers 4s. No
   (trap)                              contact      SPACE needed --- just walking into it
-                                                   costs energy
+                                                   costs energy. A faint red glow pulses
+                                                   at the spawn location 0.5s before it
+                                                   appears as a warning.
 
-  Journal    📓          +5 energy    SPACE to     Only appears on Days 2–5 if the player
-  (rescue)               + speed      collect      is in wilting (😔) state mid-day.
+  Journal    📓          +5 energy    SPACE to     Appears on any day if the player is in
+  (rescue)               + speed      collect      wilting (😔) state mid-day.
              boost if                              Spawns in lower-right of floor
              wilted                                after 8–18s delay. Lingers 15s then
                                                    disappears. Respawns 8–18s after expiry
@@ -371,7 +375,7 @@ Normal chat (chats 1--4, energy above low threshold):
 -   "Drink some water. 💧"
 -   "Maybe take a little nap? It might help 😴"
 
-Low energy chat (player below 5 energy):
+Low energy chat (player below 4 energy):
 
 -   "Hey... you look tired. Go take a nap! 😴"
 -   "You should really rest. The bed is right there! 🛏️"
@@ -452,13 +456,13 @@ Right column --- Stats:
   **Position**     **Content**
   ---------------- ------------------------------------------------------
   Top-left         Mood pill: character sprite, Day X/5, level label,
-                   mood emoji + name + wellbeing %
+                   mood emoji + name
 
-  Top-center       10 energy circles (pink = healthy, red = low, grey
-                   ring = empty) + wellbeing % bar
+  Top-center       10 energy circles (17px, pink = healthy, red = below
+                   4, grey ring = empty) + bold ⚡ X/10 label
 
-  Top-right        Customers in shop (purple) · Orders done/required ·
-                   Timer · ⚙️ Settings
+  Top-right        Orders done/required (large font) · Timer (large
+                   font) · ⚙️ Settings
 
   Bottom-left      Nap button with +3⚡ label and progress bar while
                    sleeping
@@ -514,10 +518,11 @@ balance is internalized.
 **Custom Character Art**
 
 All 5 named customers use full photo replacements (`CUST_PHOTOS` map).
-Stick body removed for all of them. Photos: `photos/nathan.jpeg`,
-`photos/ellen.png`, `photos/elise.png`, `photos/erica.png`,
-`photos/michael.png`. Queue: 30×48px `<img>`. Walking: 34×56 SVG
-`<image>`. Unnamed/fallback customers still use stick figures.
+Stick body removed for all of them. Photos stored in `.photos/` (hidden
+folder): `.photos/nathan.jpeg`, `.photos/ellen.png`, `.photos/elise.png`,
+`.photos/erica.png`, `.photos/michael.png`. A `.nojekyll` file ensures
+GitHub Pages serves the hidden folder. Queue: 30×48px `<img>`. Walking:
+34×56 SVG `<image>`. Unnamed/fallback customers still use stick figures.
 
 -   Nathan, Ellen, Elise, Erica, Michael: entire RPG replaced with photo
     in both queue and walking states.
@@ -529,15 +534,15 @@ Flower petals only shown in state 5 (WEEEE). Stick body always retained.
   -----------------------------------------------------------------------
   **State**   **Name**       **Head**
   ----------- -------------- ---------------------------------------------
-  5           WEEEE          `photos/sav_wee.jpeg` + flower petals
+  5           WEEEE          `.photos/sav_wee.png` + flower petals
 
-  4           fine           `photos/sav_fine.png`
+  4           fine           `.photos/sav_fine.png`
 
-  3           meh            `photos/sav_meh.png`
+  3           meh            `.photos/sav_meh.png`
 
-  2           wilting        `photos/sav_wilting.png`
+  2           wilting        `.photos/sav_wilting.png`
 
-  1           acid reflux    `photos/sav_acidreflux.png`
+  1           acid reflux    `.photos/sav_acidreflux.png`
   -----------------------------------------------------------------------
 
 -   Impatient customers: all RPGs shake horizontally
