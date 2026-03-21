@@ -7,10 +7,28 @@
 <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<style>*{box-sizing:border-box;margin:0;padding:0;}body{background:#fdf2f8;display:flex;justify-content:center;align-items:center;min-height:100vh;font-family:Georgia,serif;}</style>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{width:100%;height:100%;overflow:hidden;background:#fdf2f8;font-family:Georgia,serif;}
+  #scale-wrapper{position:fixed;width:900px;height:620px;transform-origin:top left;}
+  #root{width:900px;height:620px;overflow:hidden;}
+</style>
 </head>
 <body>
-<div id="root"></div>
+<div id="scale-wrapper"><div id="root"></div></div>
+<script>
+  function resizeGame(){
+    var scale=Math.min(window.innerWidth/900,window.innerHeight/620);
+    var left=(window.innerWidth-900*scale)/2;
+    var top=(window.innerHeight-620*scale)/2;
+    var w=document.getElementById('scale-wrapper');
+    w.style.transform='scale('+scale+')';
+    w.style.left=left+'px';
+    w.style.top=top+'px';
+  }
+  window.addEventListener('resize',resizeGame);
+  resizeGame();
+</script>
 <script type="text/babel">
 const { useState, useEffect, useRef, useCallback } = React;
 
@@ -19,7 +37,7 @@ const CHAR_W = 30, CHAR_H = 40;
 const BASE_SPEED = 5.2;
 const FRIEND_SPEED = 5.5;
 const TOTAL_POINTS = 10;           // 10 circles
-const NAP_DURATION = 5000;
+const NAP_DURATION = 4000;
 const NAP_ENERGY = 3;              // +3 circles
 const FRIEND_ENERGY_GAIN = 0.5;    // +0.5
 const SNACK_ENERGY = 2;            // +2
@@ -44,6 +62,10 @@ const LOOT_GAP_SNACK = 5000;
 const LOOT_GAP_WATER = 1500;
 const LOOT_GAP_SNACK_D1 = 8000;
 const LOOT_GAP_WATER_D1 = 4000;
+const LOOT_GAP_SNACK_D3 = 3000;
+const LOOT_GAP_WATER_D3 = 900;
+const LOOT_GAP_SNACK_D4 = 2500;
+const LOOT_GAP_WATER_D4 = 750;
 const LOOT_GAP_SNACK_D5 = 2000;
 const LOOT_GAP_WATER_D5 = 600;
 const SLOW_MOOD_THRESHOLD = 3;
@@ -53,13 +75,13 @@ const MAX_DAYS = 5;
 const LEVELS = {
   1: { minOrders:8,  threeFlowerRate:0.0,  patience:16, spawnGap:[3000,4500],  label:"Opening Day",
        briefMsg:"First day on the job! Time to prove yourself! Complete 8 orders." },
-  2: { minOrders:6,  threeFlowerRate:0.30, patience:16, spawnGap:[2500,4000],  label:"Gettin the Hang of It",
+  2: { minOrders:6,  threeFlowerRate:0.30, fourFlowerRate:0, maxFlowers:3, patience:16, spawnGap:[2500,4000],  label:"Gettin the Hang of It",
        briefMsg:"Damn, that shit was kinda stressful. Just complete 6 orders this round." },
-  3: { minOrders:6,  threeFlowerRate:0.50, patience:16, spawnGap:[2000,3500],  label:"Tough Day",
+  3: { minOrders:7,  threeFlowerRate:0.20, fourFlowerRate:0, patience:16, spawnGap:[2000,3500],  label:"Tough Day",
        briefMsg:"Working is exhausting. You might be more drawn to True Crime, but RESIST!" },
-  4: { minOrders:7,  threeFlowerRate:0.75, maxFlowers:3, patience:16, spawnGap:[1800,3000],  label:"Peak Season",
+  4: { minOrders:7,  threeFlowerRate:0.50, maxFlowers:3, fourFlowerRate:0, patience:22, spawnGap:[1800,3000],  label:"Peak Season",
        briefMsg:"The shop is picking up & customers want bigger bouquets? BTW, your friend is sick today, so make sure to avoid them." },
-  5: { minOrders:6,  threeFlowerRate:0.75, patience:18, spawnGap:[2000,3500],  label:"Full Bloom",
+  5: { minOrders:6,  threeFlowerRate:0.75, fourFlowerRate:0.10, patience:24, spawnGap:[2000,3500],  label:"Full Bloom",
        briefMsg:"Final Day! FYI - Your friend is healthy. Pace yourself, stay fuelled, and finish strong." },
 };
 
@@ -184,7 +206,12 @@ function Char({ state, facing, walking, walkFrame=0, size=36, sleeping=false }) 
             {state===5&&[0,45,90,135,180,225,270,315].map((a,i)=>(
               <ellipse key={i} cx={Math.cos(a*Math.PI/180)*11} cy={Math.sin(a*Math.PI/180)*11} rx="6" ry="3.5" fill={c.bc} opacity={0.92} transform={`rotate(${a},${Math.cos(a*Math.PI/180)*11},${Math.sin(a*Math.PI/180)*11})`}/>
             ))}
-            {state<=2?(
+            {state===1?(
+              <>
+                <defs><clipPath id="sav-acid-clip"><circle cx="0" cy="0" r="16"/></clipPath></defs>
+                <image href="photos/sav_acidreflux.png" x="-16" y="-16" width="32" height="32" clipPath="url(#sav-acid-clip)" preserveAspectRatio="xMidYMid slice"/>
+              </>
+            ):state===2?(
               <>
                 <defs><clipPath id="sav-wilt-clip"><circle cx="0" cy="0" r="16"/></clipPath></defs>
                 <image href="photos/sav_wilting.png" x="-16" y="-16" width="32" height="32" clipPath="url(#sav-wilt-clip)" preserveAspectRatio="xMidYMid slice"/>
@@ -484,11 +511,18 @@ const ACTIVITY_POOL = [
   "a date", "mom", "a birthday present", "romance", "my friend", "themselves", "an important work thing",
 ];
 
-function makeCustomer(id, qIdx, threeFlowerRate=0, excludeType=null, maxFlowers=4) {
+function orderPatience(basePatience, flowerCount) {
+  if(flowerCount>=4) return basePatience+8;
+  if(flowerCount>=3) return basePatience+4;
+  return basePatience;
+}
+
+function makeCustomer(id, qIdx, threeFlowerRate=0, excludeType=null, maxFlowers=4, fourFlowerRate=null) {
   const roll = Math.random();
   let n;
-  if(maxFlowers >= 4 && roll < threeFlowerRate * 0.25) n = 4;
-  else if(roll < threeFlowerRate) n = 3;
+  const fr4 = fourFlowerRate !== null ? fourFlowerRate : threeFlowerRate * 0.25;
+  if(maxFlowers >= 4 && roll < fr4) n = 4;
+  else if(roll < fr4 + threeFlowerRate) n = 3;
   else n = 2;
   const colors=[...FKEYS].sort(()=>Math.random()-0.5).slice(0,n);
   const type = pickCustomerType(excludeType);
@@ -551,6 +585,8 @@ function BloomGame() {
   const [snacksEaten,setSnacksEaten]     = useState(0);
   const [watersToday,setWatersToday]     = useState(0);
   const [napsToday,setNapsToday]         = useState(0);
+  const [trueCrimeToday,setTrueCrimeToday] = useState(0);
+  const [journalToday,setJournalToday]     = useState(0);
   const [counterStatus,setCounterStatus] = useState("idle");
   // How many customers are inbound (approaching or queued, not yet leaving)
   const [customerCount,setCustomerCount] = useState(0);
@@ -611,6 +647,7 @@ function BloomGame() {
   const trueCrimeTimerRef2=useRef(null);
   const journalRef=useRef(null);
   const journalTimerRef=useRef(null);
+  const journalCountRef=useRef(0);
   const handleSpaceRef=useRef(null);
   const outOfEnergyTimerRef=useRef(null);
   const skipToLossRef=useRef(false);
@@ -675,7 +712,7 @@ function BloomGame() {
     const p=randSafeFloor(50,existing);
     const item={id:Date.now(),type:"snack",emoji:"🥚",x:p.x,y:p.y,born:Date.now(),lifetime:LOOT_VISIBLE_MS};
     snackRef.current=item;setSnackItem(item);
-    const gap=day===1?LOOT_GAP_SNACK_D1:day===5?LOOT_GAP_SNACK_D5:LOOT_GAP_SNACK;
+    const gap=day===1?LOOT_GAP_SNACK_D1:day===3?LOOT_GAP_SNACK_D3:day===4?LOOT_GAP_SNACK_D4:day===5?LOOT_GAP_SNACK_D5:LOOT_GAP_SNACK;
     snackTimerRef.current=setTimeout(()=>{snackRef.current=null;setSnackItem(null);snackTimerRef.current=setTimeout(scheduleSnack,gap);},LOOT_VISIBLE_MS);
   },[day]);
 
@@ -685,20 +722,25 @@ function BloomGame() {
     const p=randSafeFloor(50,existing);
     const item={id:Date.now(),type:"water",emoji:"💧",x:p.x,y:p.y,born:Date.now(),lifetime:LOOT_VISIBLE_MS};
     waterRef.current=item;setWaterItem(item);
-    const gap=day===1?LOOT_GAP_WATER_D1:day===5?LOOT_GAP_WATER_D5:LOOT_GAP_WATER;
+    const gap=day===1?LOOT_GAP_WATER_D1:day===3?LOOT_GAP_WATER_D3:day===4?LOOT_GAP_WATER_D4:day===5?LOOT_GAP_WATER_D5:LOOT_GAP_WATER;
     waterTimerRef.current=setTimeout(()=>{waterRef.current=null;setWaterItem(null);waterTimerRef.current=setTimeout(scheduleWater,gap);},LOOT_VISIBLE_MS);
   },[day]);
 
   // Journal rescue item — only if entering day while wilting (state 2) on days 3+
   const scheduleJournal=useCallback(()=>{
-    if(day<3||pointsRef.current>=LOW_ENERGY_THRESHOLD)return; // only on days 3+ with <5 energy
-    const delay=Math.random()*15000; // random within first 15s
+    if(day<2||getWbState(wellbeingRef.current)>2||journalCountRef.current>=2)return; // only days 2+ when wilting, max 2 times
+    const delay=8000+Math.random()*10000; // 8–18s between spawns
     journalTimerRef.current=setTimeout(()=>{
-      // Fixed lower-right area of the floor
+      if(journalRef.current||journalCountRef.current>=2)return; // already on floor or cap reached
+      journalCountRef.current+=1;
       const p={x:FLOOR.x+FLOOR.w-100,y:FLOOR.y+FLOOR.h-60};
       const item={id:Date.now(),type:"journal",emoji:"📓",x:p.x,y:p.y,born:Date.now(),lifetime:JOURNAL_VISIBLE_MS};
       journalRef.current=item;setJournalItem(item);
-      journalTimerRef.current=setTimeout(()=>{journalRef.current=null;setJournalItem(null);},JOURNAL_VISIBLE_MS);
+      journalTimerRef.current=setTimeout(()=>{
+        journalRef.current=null;setJournalItem(null);
+        // re-schedule if still wilting and under cap
+        if(getWbState(wellbeingRef.current)<=2&&journalCountRef.current<2)scheduleJournal();
+      },JOURNAL_VISIBLE_MS);
     },delay);
   },[day]);
 
@@ -751,19 +793,19 @@ function BloomGame() {
     posRef.current={x:430,y:260};pointsRef.current=initEnergy;
     bouquetRef.current=[];currentRef.current=null;
     walkFrameRef.current=0;speedModRef.current=1;indulgeRef.current=0;
-    sleepingRef.current=false;snackRef.current=null;waterRef.current=null;trueCrimeRef.current=null;trueCrimeRef2.current=null;journalRef.current=null;skipToLossRef.current=false;friendContactCooldownRef.current=0;
+    sleepingRef.current=false;snackRef.current=null;waterRef.current=null;trueCrimeRef.current=null;trueCrimeRef2.current=null;journalRef.current=null;journalCountRef.current=0;skipToLossRef.current=false;friendContactCooldownRef.current=0;
     const fp=randFloor(80);friendPosRef.current=fp;friendTargRef.current=fp;
 
     customerIdRef.current=1;
-    const fc=makeCustomer(1,0,lvlCfg.threeFlowerRate,FRIEND_TYPE_BY_DAY[Math.min(day,5)-1],lvlCfg.maxFlowers||4);
+    const fc=makeCustomer(1,0,lvlCfg.threeFlowerRate,FRIEND_TYPE_BY_DAY[Math.min(day,5)-1],lvlCfg.maxFlowers||4,lvlCfg.fourFlowerRate??null);
     fc.x=QUEUE_START.x; fc.y=QUEUE_START.y; fc.state="queued";
-    fc.patience=fc.customerType==="elise"?9999:lvlCfg.patience;
+    fc.patience=fc.customerType==="elise"?9999:orderPatience(lvlCfg.patience,fc.colors.length);
 
     setPos({x:430,y:260});setPoints(initEnergy);setBouquet([]);setCurrentOrder(null);
     setOrderTimer(null);setCounterStatus("ready");setOutOfEnergy(false);
     setCustomers([fc]);setCustomerCount(1);
     setOrdersToday(0);setLostOrders(0);setOrderGoalMet(false);setCustomerFeedback([]);setSelfToday(0);setGivingToday(0);
-    setFriendChats(0);setSnacksEaten(0);setWatersToday(0);setNapsToday(0);
+    setFriendChats(0);setSnacksEaten(0);setWatersToday(0);setNapsToday(0);setTrueCrimeToday(0);setJournalToday(0);
     setTimeLeft(60);setWalkFrame(0);setSpeedMod(1);
     setLootItems([]);setSnackItem(null);setWaterItem(null);setTrueCrimeItem(null);setTrueCrimeItem2(null);setJournalItem(null);
     setFriendPos(fp);setSleeping(false);setNapProgress(0);setFriendBubble(null);setNearObj(null);
@@ -823,9 +865,8 @@ function BloomGame() {
 
       setCustomers(prev=>{
         const lvlCfg=LEVELS[Math.min(wellbeingRef.current>=20?Math.min(day,MAX_DAYS):day,MAX_DAYS)];
-        const patience=lvlCfg.patience;
         const updated=prev.map(c=>{
-          if(c.state==="approaching"){const dx=c.tx-c.x,dy=c.ty-c.y,dist=Math.sqrt(dx*dx+dy*dy);if(dist<3)return{...c,x:c.tx,y:c.ty,state:"queued",patience};return{...c,x:c.x+(dx/dist)*1.6,y:c.y+(dy/dist)*1.6};}
+          if(c.state==="approaching"){const dx=c.tx-c.x,dy=c.ty-c.y,dist=Math.sqrt(dx*dx+dy*dy);if(dist<3){const wiltBonus=getWbState(wellbeingRef.current)<=2?6:0;const pat=c.customerType==="elise"?9999:orderPatience(lvlCfg.patience,c.colors.length)+wiltBonus;return{...c,x:c.tx,y:c.ty,state:"queued",patience:pat};}return{...c,x:c.x+(dx/dist)*1.6,y:c.y+(dy/dist)*1.6};}
           if(c.state==="leaving_happy"){const dx=EXIT_X-c.x,dy=0,dist=Math.abs(EXIT_X-c.x);if(dist<5)return null;return{...c,x:c.x-2.2};}
           if(c.state==="leaving"){const dx=EXIT_X-c.x,dy=0,dist=Math.abs(EXIT_X-c.x);if(dist<5)return null;return{...c,x:c.x-2.2};}
           if((c.state==="queued"||c.state==="impatient")&&tick%60===0){const np=c.patience-1;if(np<=0)return{...c,state:"leaving"};return{...c,patience:np,state:np<=5?"impatient":"queued"};}
@@ -860,6 +901,7 @@ function BloomGame() {
           found="truecrime";
           const drain=Math.min(pointsRef.current,TRUE_CRIME_COST);
           if(drain>0){pointsRef.current=Math.max(0,pointsRef.current-drain);setPoints(pointsRef.current);showDelta(-drain);}
+          setTrueCrimeToday(n=>n+1);
           trueCrimeRef.current=null;setTrueCrimeItem(null);
         }
       }
@@ -870,6 +912,7 @@ function BloomGame() {
           found="truecrime";
           const drain=Math.min(pointsRef.current,TRUE_CRIME_COST);
           if(drain>0){pointsRef.current=Math.max(0,pointsRef.current-drain);setPoints(pointsRef.current);showDelta(-drain);}
+          setTrueCrimeToday(n=>n+1);
           trueCrimeRef2.current=null;setTrueCrimeItem2(null);
         }
       }
@@ -900,7 +943,8 @@ function BloomGame() {
           const id=customerIdRef.current;
           const qIdx=customersRef.current.filter(c=>c.state==="queued"||c.state==="impatient").length;
           const c=makeCustomer(id,qIdx,lvlCfg.threeFlowerRate,FRIEND_TYPE_BY_DAY[Math.min(day,5)-1],lvlCfg.maxFlowers||4);
-          c.patience=c.customerType==="elise"?9999:lvlCfg.patience;
+          const wiltBonus=getWbState(wellbeingRef.current)<=2?6:0;
+          c.patience=c.customerType==="elise"?9999:orderPatience(lvlCfg.patience,c.colors.length)+wiltBonus;
           setCustomers(prev=>[...prev,c]);
         }
       }
@@ -1095,9 +1139,11 @@ function BloomGame() {
       journalRef.current=null;setJournalItem(null);
       clearTimeout(journalTimerRef.current);
       pointsRef.current=Math.min(TOTAL_POINTS,pointsRef.current+JOURNAL_ENERGY);
-      setPoints(pointsRef.current);showDelta(+JOURNAL_ENERGY);setSelfToday(s=>s+1);
+      setPoints(pointsRef.current);showDelta(+JOURNAL_ENERGY);setSelfToday(s=>s+1);setJournalToday(j=>j+1);
       // Speed boost if wilted (state 1 or 2)
       if(getWbState(wellbeingRef.current)<=2){speedModRef.current=Math.min(1.6,speedModRef.current+0.4);setSpeedMod(speedModRef.current);}
+      // Re-schedule if still wilting and under cap
+      if(getWbState(wellbeingRef.current)<=2&&journalCountRef.current<2)scheduleJournal();
       return;
     }
     if(obj==="truecrime"){return;}
@@ -1286,7 +1332,6 @@ function BloomGame() {
         `}</style>
 
         {/* Header */}
-        {isNewRecord&&<div style={{background:"#fef9c3",border:"2px solid #fde047",borderRadius:8,padding:"3px 12px",marginBottom:4,fontSize:10,color:"#854d0e",fontWeight:"bold",animation:"pop 0.4s ease-out",alignSelf:"center"}}>✨ New record — {ordersToday} orders!</div>}
         <h2 style={{fontSize:16,color:eodM.moodColor,margin:"0 0 6px",textAlign:"center"}}>{LEVELS[Math.min(day,MAX_DAYS)].label} — Day {day}</h2>
 
         {/* Two-column body */}
@@ -1339,7 +1384,7 @@ function BloomGame() {
 
             {/* Combined: mood bar + warnings + next-day preview */}
             <div style={{background:"white",borderRadius:12,padding:"10px 12px",boxShadow:"0 2px 8px rgba(0,0,0,0.07)",border:"1.5px solid #e5e7eb",display:"flex",flexDirection:"column",gap:6}}>
-              <div style={{fontSize:8,color:"#9ca3af",letterSpacing:1,textTransform:"uppercase",textAlign:"center"}}>Mood</div>
+              <div style={{fontSize:8,color:"#9ca3af",letterSpacing:1,textAlign:"center"}}>your mood</div>
               <div style={{position:"relative",height:16,borderRadius:8,background:"linear-gradient(to right, #78716c 0%, #94a3b8 25%, #fbbf24 50%, #4ade80 75%, #f472b6 100%)"}}>
                 <div style={{position:"absolute",top:"50%",left:`${100-markerTop}%`,transform:"translate(-50%,-50%)",width:20,height:20,borderRadius:"50%",background:"white",border:`2.5px solid ${eodM.moodColor}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,zIndex:2,boxShadow:"0 1px 4px rgba(0,0,0,0.2)"}}>
                   {eodM.moodEmoji}
@@ -1368,19 +1413,15 @@ function BloomGame() {
                 </div>
               )}
               {!isLastDay&&(
-                <div style={{borderTop:"1px solid #f3f4f6",paddingTop:6}}>
-                  <div style={{fontSize:8,color:"#9ca3af",marginBottom:3}}>
-                    {failedOrders?"Restarting this level with":`Starting Day ${day+1} with`}
-                  </div>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{display:"inline-flex",alignItems:"center",gap:4,background:nextMoodCfg.moodBg,borderRadius:20,padding:"3px 10px",border:`1px solid ${nextMoodCfg.moodColor}33`}}>
-                      <span style={{fontSize:14}}>{nextMoodCfg.moodEmoji}</span>
-                      <span style={{fontSize:12,color:nextMoodCfg.moodColor,fontWeight:"bold"}}>{nextMoodCfg.name}</span>
-                    </span>
-                    <span style={{fontSize:13,fontWeight:"bold",color:startEnergy<TOTAL_POINTS?"#ef4444":"#ec4899"}}>⚡ {startEnergy.toFixed(1)} energy</span>
-                    <span style={{fontSize:14,color:"#9ca3af"}}>→</span>
-                    <Char state={eodW} facing="right" walking={false} walkFrame={0} size={52}/>
-                  </div>
+                <div style={{borderTop:"1px solid #f3f4f6",paddingTop:6,display:"flex",alignItems:"center",justifyContent:"center",gap:8,flexWrap:"nowrap"}}>
+                  <span style={{fontSize:13,fontWeight:"bold",color:"#374151",whiteSpace:"nowrap"}}>{failedOrders?"Restarting with":`Starting Day ${day+1} with`}</span>
+                  <span style={{fontSize:13,fontWeight:"bold",color:startEnergy<TOTAL_POINTS?"#ef4444":"#ec4899",whiteSpace:"nowrap"}}>⚡ {startEnergy.toFixed(1)}</span>
+                  <span style={{fontSize:13,color:"#9ca3af"}}>→</span>
+                  <Char state={eodW} facing="right" walking={false} walkFrame={0} size={40}/>
+                  <span style={{display:"inline-flex",alignItems:"center",gap:3,background:nextMoodCfg.moodBg,borderRadius:20,padding:"3px 10px",border:`1px solid ${nextMoodCfg.moodColor}33`}}>
+                    <span style={{fontSize:13}}>{nextMoodCfg.moodEmoji}</span>
+                    <span style={{fontSize:12,color:nextMoodCfg.moodColor,fontWeight:"bold"}}>{nextMoodCfg.name}</span>
+                  </span>
                 </div>
               )}
             </div>
@@ -1401,12 +1442,19 @@ function BloomGame() {
                 <div style={{fontSize:8,color:"#6b7280",textAlign:"center"}}>😞 incomplete</div>
               </div>
 
-              {/* Self-care — stacked */}
-              <div style={{flex:1,background:"white",borderRadius:10,padding:"7px 8px",boxShadow:"0 2px 8px rgba(0,0,0,0.07)",border:"1.5px solid rgba(0,0,0,0.06)",display:"flex",flexDirection:"column",gap:3,justifyContent:"center"}}>
-                {[{e:"🫶",l:"Chats",v:friendChats},{e:"🥚",l:"Eggs",v:snacksEaten},{e:"💧",l:"Waters",v:watersToday},{e:"💤",l:"Naps",v:napsToday}].map(r=>(
-                  <div key={r.e} style={{display:"flex",alignItems:"center",gap:4}}>
-                    <span style={{fontSize:11}}>{r.e}</span>
-                    <span style={{fontSize:9,fontWeight:"bold",color:"#374151",minWidth:10}}>{r.v}</span>
+              {/* Self-care — two columns */}
+              <div style={{flex:1,background:"white",borderRadius:10,padding:"7px 8px",boxShadow:"0 2px 8px rgba(0,0,0,0.07)",border:"1.5px solid rgba(0,0,0,0.06)",display:"grid",gridTemplateColumns:"1fr 1fr",gap:"3px 6px",alignContent:"center"}}>
+                {[
+                  {e:"🫶",l:"Chats",v:friendChats,neg:false},
+                  {e:"🥚",l:"Eggs",v:snacksEaten,neg:false},
+                  {e:"💧",l:"Waters",v:watersToday,neg:false},
+                  {e:"💤",l:"Naps",v:napsToday,neg:false},
+                  {e:"📓",l:"Journal",v:journalToday,neg:false},
+                  {e:"🕵🏻‍♀️",l:"True Crime",v:trueCrimeToday,neg:true},
+                ].map(r=>(
+                  <div key={r.e} style={{display:"flex",alignItems:"center",gap:3}}>
+                    <span style={{fontSize:10}}>{r.e}</span>
+                    <span style={{fontSize:9,fontWeight:"bold",color:r.neg&&r.v>0?"#ef4444":"#374151",minWidth:8}}>{r.v}</span>
                     <span style={{fontSize:7,color:"#9ca3af"}}>{r.l}</span>
                   </div>
                 ))}
@@ -1482,6 +1530,7 @@ function BloomGame() {
         @keyframes win-jump{0%,100%{transform:translateY(0)}40%{transform:translateY(-22px)}60%{transform:translateY(-10px)}}
         @keyframes win-sway{0%,100%{transform:rotate(-9deg)}50%{transform:rotate(9deg)}}
         @keyframes win-pop{0%{transform:scale(0);opacity:0}60%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
+        @keyframes win-dance{0%,100%{transform:translateY(0) rotate(-6deg)}25%{transform:translateY(-14px) rotate(0deg)}50%{transform:translateY(0) rotate(6deg)}75%{transform:translateY(-8px) rotate(0deg)}}
         @keyframes quote-left{0%{opacity:0;transform:translateX(-18px)}100%{opacity:1;transform:translateX(0)}}
         @keyframes quote-right{0%{opacity:0;transform:translateX(18px)}100%{opacity:1;transform:translateX(0)}}
       `}</style>
@@ -1498,11 +1547,11 @@ function BloomGame() {
         <CelebCust name="erica"  photoSrc={CUST_PHOTOS.erica}  bodyColor="#86efac" armPose="out"    wrapAnim="win-jump"  delay="0.18s" dur="0.55s" size={62}/>
         <CelebCust name="michael" photoSrc={CUST_PHOTOS.michael} bodyColor="#fcd34d" armPose="up"   wrapAnim="win-sway"  delay="0.14s" dur="0.52s" size={62}/>
       </div>
-      {/* Sav avatar — centered, right above title */}
-      <div style={{animation:"bi 1s cubic-bezier(0.34,1.56,0.64,1) forwards",marginBottom:-100,overflow:"visible",marginTop:50}}>
+      {/* Sav avatar — centered between customers and title */}
+      <div style={{animation:"bi 1s cubic-bezier(0.34,1.56,0.64,1) forwards",marginTop:12,marginBottom:8,overflow:"visible"}}>
         <Char state={5} facing="right" walking={false} walkFrame={0} size={80}/>
       </div>
-      <h1 style={{fontSize:36,color:"#9d174d",margin:"0 0 6px",letterSpacing:-1,position:"relative",zIndex:10}}>Sabannah's thriving. 🌸</h1>
+      <h1 style={{fontSize:36,color:"#9d174d",margin:"0 0 6px",letterSpacing:-1}}>Sabannah's thriving. 🌸</h1>
       <p style={{maxWidth:380,color:"#4b5563",fontSize:15,lineHeight:1.9,fontStyle:"italic"}}>"Five days of running your shop — and you took care of yourself through all of it."</p>
       {dayHistory.length>0&&(
         <div style={{marginTop:14,background:"rgba(255,255,255,0.85)",borderRadius:14,padding:"10px 18px",maxWidth:420,textAlign:"left"}}>
@@ -1515,7 +1564,30 @@ function BloomGame() {
           </div>))}
         </div>
       )}
-      <button onClick={()=>{setDay(1);setWb(70);setStreak(0);setBest(0);setDayHistory([]);setStartEnergy(TOTAL_POINTS);setScreen("intro");}} style={{marginTop:18,background:"#ec4899",color:"white",border:"none",borderRadius:12,padding:"12px 32px",fontSize:14,fontFamily:"Georgia,serif",cursor:"pointer"}}>Play again</button>
+      {/* Play again row — avatars flanking the button */}
+      <div style={{marginTop:18,display:"flex",alignItems:"flex-end",justifyContent:"center",gap:12}}>
+        {/* Left — acid reflux & wilting */}
+        {[
+          {state:1,label:"acid reflux",emoji:"🥀",delay:"0s",   dur:"0.7s"},
+          {state:2,label:"wilting",    emoji:"😔",delay:"0.12s", dur:"0.65s"},
+        ].map(({state,label,emoji,delay,dur})=>(
+          <div key={state} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,animation:`win-dance ${dur} ${delay} ease-in-out infinite`}}>
+            <Char state={state} facing="right" walking={true} walkFrame={state%2} size={40}/>
+            <div style={{fontSize:7,color:"#9ca3af",fontFamily:"Georgia,serif"}}>{emoji} {label}</div>
+          </div>
+        ))}
+        <button onClick={()=>{setDay(1);setWb(70);setStreak(0);setBest(0);setDayHistory([]);setStartEnergy(TOTAL_POINTS);setScreen("intro");}} style={{background:"#ec4899",color:"white",border:"none",borderRadius:12,padding:"12px 32px",fontSize:14,fontFamily:"Georgia,serif",cursor:"pointer",flexShrink:0,marginBottom:18}}>Play again</button>
+        {/* Right — meh & fine */}
+        {[
+          {state:3,label:"meh",  emoji:"😐",delay:"0.06s", dur:"0.72s"},
+          {state:4,label:"fine", emoji:"😊",delay:"0.18s", dur:"0.6s"},
+        ].map(({state,label,emoji,delay,dur})=>(
+          <div key={state} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,animation:`win-dance ${dur} ${delay} ease-in-out infinite`}}>
+            <Char state={state} facing="right" walking={true} walkFrame={state%2} size={40}/>
+            <div style={{fontSize:7,color:"#9ca3af",fontFamily:"Georgia,serif"}}>{emoji} {label}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 
@@ -1525,7 +1597,13 @@ function BloomGame() {
     return(
       <div style={{...sharedStyle,background:"#f1f5f9",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",textAlign:"center"}}>
         <style>{`@keyframes loot-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}} @keyframes selfcare-glow{0%,100%{opacity:0}50%{opacity:0}} @keyframes truecrime-pulse{0%,100%{opacity:0}50%{opacity:0}}`}</style>
-        <Char state={1} facing="right" walking={false} walkFrame={0} size={80}/>
+        {failedOrders?(
+          <div style={{transform:"rotate(90deg)",transformOrigin:"center",marginBottom:8,marginTop:8}}>
+            <Char state={1} facing="right" walking={false} walkFrame={0} size={80}/>
+          </div>
+        ):(
+          <Char state={1} facing="right" walking={false} walkFrame={0} size={80}/>
+        )}
         <h1 style={{fontSize:30,color:"#475569",margin:"18px 0 8px"}}>
           {failedOrders?"ACID REFLUX":"You have completely wilted."}
         </h1>

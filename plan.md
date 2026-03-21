@@ -38,8 +38,10 @@ Game Over (failed orders or wilted) \| Win (all 5 days complete)
 
 **Level Progression**
 
-All levels run 60 seconds. Customer patience is shown in seconds queue
-wait time.
+All levels run 60 seconds. Customer patience scales with order size:
+base patience (from level config) + 4s for 3-flower orders, + 8s for
+4-flower orders. 2-flower orders use the base patience. When the player
+is wilted (state ≤ 2), all customers receive +6 bonus patience ticks.
 
   -------------------------------------------------------------------------------------------
   **Day**   **Label**   **Min      **3-Flower   **Patience**   **Spawn   **Self-Care Loot**
@@ -51,11 +53,12 @@ wait time.
   2         Gettin the  6          30%          16s            2.5--4s   Normal
             Hang of It
 
-  3         Tough Day   6          50%          16s            2--3.5s   Normal
+  3         Tough Day   7          20%          16s            2--3.5s   Normal
 
-  4         Peak Season 7          65%          16s            1.8--3s   Normal (friend sick)
+  4         Peak Season 7          50% 3-fl,    22s            1.8--3s   Normal (friend sick)
+                                   50% 2-fl
 
-  5         Full Bloom  7          75%          18s            2--3.5s   Generous (egg 2s /
+  5         Full Bloom  6          75%          24s            2--3.5s   Generous (egg 2s /
                                                                          water 0.6s)
   -------------------------------------------------------------------------------------------
 
@@ -68,17 +71,17 @@ wait time.
                                                                                                         grind burns energy fast. Loot is scarce so players who
                                                                                                         skip self-care arrive at Day 2 already depleted.
 
-  2         Gettin the      6 orders    30% 3-flower               2.5--4s         Normal               First 3-flower orders introduce complexity. Self-care
-            Your Feet                                                                                    habits matter here — Day 3 punishes those who don't.
+  2         Gettin the      6 orders    30% 3-flower,              2.5--4s         Normal               First 3-flower orders. Self-care habits matter here
+            Hang of It                  70% 2-flower                                                     — Day 3 punishes those who don't.
 
-  3         Tough Day    6 orders    50% 3-flower,              2--3.5s         Normal               Two simultaneous true crime items (0.8--2s gap each).
-                                        ~25% 4-flower                                                   Complexity and spawn rate both jump. Hardest day for
-                                                                                                        self-control.
+  3         Tough Day       7 orders    20% 3-flower,              2--3.5s         Normal               Two simultaneous true crime items. Complexity and
+                                        80% 2-flower                                                    spawn rate both jump. Hardest day for self-control.
 
-  4         Peak Season     7 orders    65% 3-flower,              1.8--3s         Normal               Friend is sick — pressing SPACE costs −1 energy. Friend
-                                        ~25% 4-flower                                                   moves at 45% speed with a red glow. Avoid them.
+  4         Peak Season     7 orders    50% 3-flower,              1.8--3s         Normal               Friend is sick — touching them auto-drains −1 energy
+                                        50% 2-flower                                                    (2s cooldown). Friend moves at 75% normal speed (25%
+                                        (no 4-flower)                                                   slower) with a red glow. Avoid them.
 
-  5         Full Bloom      7 orders    75% 3-flower,              2--3.5s         Generous             High quota and complex orders, but loot is abundant
+  5         Full Bloom      6 orders    75% 3-flower,              2--3.5s         Generous             Reduced quota. Complex orders, but loot is abundant
                                         ~25% 4-flower                                                   (egg every 2s, water every 0.6s). A reward for players
                                                                                                         who learned to self-care. Arrives depleted = very hard.
   ---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -232,7 +235,13 @@ Flower spawn rate: every 600–1000ms (0.6–1 second). Only flowers needed
 for the current active order are spawned, and only while an order is
 accepted. Each flower lives 3.2–4 seconds before disappearing.
 
--   4-flower orders appear on Days 3--5 at \~25% of the 3-flower pool
+-   4-flower orders: Day 5 = 10% only
+
+-   Day 2: 30% 3-flower, 70% 2-flower (no 4-flower)
+
+-   Day 3: 20% 3-flower, 80% 2-flower (no 4-flower)
+
+-   Day 4: 50% 3-flower, 50% 2-flower (no 4-flower)
 
 -   Day 1: all 2-flower orders (no complexity, intentional grind trap)
 
@@ -272,7 +281,10 @@ flowers for a date\").
                                         "my date is gonna love these"                    "aw man no flowers" /
                                                                                          "sad i can't give these to my date"
 
-  Michael    Yellow      Regular        "im gonna use these to ask out a cute girl"      "maybe next time..."
+  Michael    Yellow      Regular        "That was easy" /                                "Maybe later" /
+                                        "Yeah yeah yeah yeah yeah yeah yeah yeah         "Do you need help?" /
+                                        yeah yeah" /                                     "This is why your mom said you couldn't
+                                        "Smoothie time"                                  be a florist when you were little"
   -----------------------------------------------------------------------------------------------------------------------
 
 Feedback phrases cycle sequentially (not randomly) through each personality's list, looping back after the last phrase. Feedback appears as a speech bubble on the customer as they walk off screen. Happy = pink border. Sad = red border. Feedback is also logged in the end-of-day Yelp Reviews panel.
@@ -295,32 +307,41 @@ nathan, ellen, ellen, erica, erica, michael, michael, nathan.
   **Item**   **Emoji**   **Effect**   **Timing**   **Notes**
   ---------- ----------- ------------ ------------ --------------------------------------
   Egg        🥚          +2 energy    2s eating    Scarce on Day 1 (8s gap). Normal: 5s
-                                      pause        gap. Generous Day 5: 2s gap
+                                      pause        gap. Day 3: 3s. Day 4: 2.5s. Day 5: 2s
 
   Water      💧          +1 energy    Instant      Scarce on Day 1 (4s gap). Normal: 1.5s
-                                                   gap. Day 5: 0.6s gap
+                                                   gap. Day 3: 0.9s. Day 4: 0.75s. Day 5: 0.6s
 
   Friend     🫶          +0.25 energy No pause     Max 4 positive chats. 5th+ drains
                                                    −0.5. NOT on Day 4 (friend sick)
 
-  Nap        🛏️          +3 energy    5s locked    Bed in bottom-left corner. Progress
+  Nap        🛏️          +3 energy    4s locked    Bed in bottom-left corner. Progress
                                                    bar during nap
 
   True Crime 🕵🏻‍♀️          −3 energy    Auto on      Appears every 1.5--4s, lingers 4s. No
   (trap)                              contact      SPACE needed --- just walking into it
                                                    costs energy
 
-  Journal    📓          +5 energy    SPACE to     Only appears on Days 3+ if energy <5.
-  (rescue)               + speed      collect      Spawns once in lower-right of floor at
-             boost if                              a random time within the first 15s.
-             wilted                                Lingers 15s then disappears. If player
-                                                   is wilted (state 1--2), also grants a
-                                                   speed boost (+0.4 speedMod).
+  Journal    📓          +5 energy    SPACE to     Only appears on Days 2–5 if the player
+  (rescue)               + speed      collect      is in wilting (😔) state mid-day.
+             boost if                              Spawns in lower-right of floor
+             wilted                                after 8–18s delay. Lingers 15s then
+                                                   disappears. Respawns 8–18s after expiry
+                                                   or collection while still wilting (state
+                                                   1–2). Max 2 spawns per day total. If
+                                                   wilting, also grants a speed boost
+                                                   (+0.4 speedMod).
   ---------------------------------------------------------------------------------------
 
 Self-care items glow teal/green and have a 56px container. True crime
 glows red. Flower loot only glows pink when the player is nearby. Items
 spawn across a grid to avoid clumping.
+
+**Spawn Distance Rules**
+
+-   Flower loot spawns at least 2.5 grid cells away from the player.
+
+-   True crime spawns at least 1 grid cell away from the player.
 
 **Friend Chat System**
 
@@ -377,11 +398,21 @@ Over-limit chat (chat 5+, −0.5 energy, amber bubble):
 
 -   Second failure on the same day = game over.
 
+-   Game over screen header: **"ACID REFLUX"**
+
+-   Game over message: *"Failed your orders cause u didn't take care of
+    yourself"*
+
 2\. Acid Reflux
 
 -   Wellbeing drops to 10 or below.
 
 -   No retry. Game ends immediately.
+
+-   Game over screen header: **"You have completely wilted."**
+
+-   Game over message: *"You did not take care of yourself and became
+    burnt out from working. Very bu guai."*
 
 **Win Condition**
 
@@ -401,15 +432,19 @@ red. Counts positive and negative reviews separately.
 
 Right column --- Stats:
 
--   Combined card (mood bar + warnings + next-day preview): horizontal
-    mood temperature bar with reversed gradient (acid reflux left →
-    WEEEE right); warning if low energy or low self-care ratio; mood
-    improvement banner if mood went up; next-day preview (mood chip +
-    energy level + arrow + avatar sprite)
+-   Combined card (mood bar + warnings + next-day preview): "your mood"
+    label above horizontal mood temperature bar with reversed gradient
+    (acid reflux left → WEEEE right); warning if low energy or low
+    self-care ratio; mood improvement banner if mood went up; next-day
+    preview on one centered line: "Starting Day X with ⚡ energy →
+    avatar sprite + mood chip". Label is large and bold.
 
 -   Three side-by-side stat boxes: completed orders (X/Y),
-    incomplete/lost orders, and self-care counts (chats, eggs, water,
-    naps)
+    incomplete/lost orders, and item interaction counts in a 2-column
+    grid (chats, eggs, waters, naps, journal, true crime). True crime
+    count shown in red if > 0.
+
+-   No "new record" banner.
 
 **HUD Layout**
 
@@ -502,11 +537,11 @@ Flower petals only shown in state 5 (WEEEE). Stick body always retained.
 
   2           wilting        `photos/sav_wilting.png`
 
-  1           acid reflux    `photos/sav_wilting.png`
+  1           acid reflux    `photos/sav_acidreflux.png`
   -----------------------------------------------------------------------
 
 -   Impatient customers: all RPGs shake horizontally
     (`cust-shake` keyframe, 0.45s loop) when their patience state is
     \"impatient\".
 
-*Last updated: v14 · Sabannah's Flower Shop*
+*Last updated: v15 · Sabannah's Flower Shop*
