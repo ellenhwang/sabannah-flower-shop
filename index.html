@@ -10,15 +10,15 @@
 <style>
   *{box-sizing:border-box;margin:0;padding:0;}
   html,body{width:100%;height:100%;overflow:hidden;background:#fdf2f8;font-family:Georgia,serif;}
-  #scale-wrapper{position:fixed;width:900px;height:620px;transform-origin:top left;}
-  #root{width:900px;height:620px;overflow:hidden;}
+  #scale-wrapper{position:fixed;width:860px;height:590px;transform-origin:top left;}
+  #root{width:860px;height:590px;overflow:hidden;}
 </style>
 </head>
 <body>
 <div id="scale-wrapper"><div id="root"></div></div>
 <script>
   function resizeGame(){
-    var scale=Math.min(window.innerWidth/900,window.innerHeight/620);
+    var scale=Math.min(window.innerWidth/860,window.innerHeight/590);
     var left=(window.innerWidth-900*scale)/2;
     var top=(window.innerHeight-620*scale)/2;
     var w=document.getElementById('scale-wrapper');
@@ -32,7 +32,7 @@
 <script type="text/babel">
 const { useState, useEffect, useRef, useCallback } = React;
 
-const W = 900, H = 620;
+const W = 860, H = 590;
 const CHAR_W = 30, CHAR_H = 40;
 const BASE_SPEED = 5.2;
 const FRIEND_SPEED = 5.5;
@@ -85,7 +85,7 @@ const LEVELS = {
        briefMsg:"Final Day! FYI - Your friend is healthy. Pace yourself, stay fuelled, and finish strong." },
 };
 
-const FLOOR   = { x:110, y:100, w:680, h:380 };
+const FLOOR   = { x:110, y:115, w:680, h:360 };
 const COUNTER = { x:FLOOR.x+240, y:FLOOR.y+12, w:180, h:58 };
 const QUEUE_START = { x:COUNTER.x+COUNTER.w+12, y:COUNTER.y+6 };
 const QUEUE_STEP  = 74;
